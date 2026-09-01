@@ -106,7 +106,7 @@ export default function App() {
     try {
       const client = getClient(account);
       const countStr = await client.readContract({
-        address: CONTRACT_ADDRESS as `0x${string}`,
+        address: CONTRACT_ADDRESS as any,
         functionName: 'get_claim_count',
         args: [],
       });
@@ -114,7 +114,7 @@ export default function App() {
       const fetched: ClaimData[] = [];
       for (let i = 0; i < count; i++) {
         const raw = await client.readContract({
-          address: CONTRACT_ADDRESS as `0x${string}`,
+          address: CONTRACT_ADDRESS as any,
           functionName: 'get_claim',
           args: [String(i)],
         });
@@ -143,7 +143,7 @@ export default function App() {
     try {
       const client = getClient(account);
       await client.writeContract({
-        address: CONTRACT_ADDRESS as `0x${string}`,
+        address: CONTRACT_ADDRESS as any,
         functionName: 'file_claim',
         args: [originalUrl, accusedUrl, statement],
         value: BigInt(bondAmount),
@@ -170,9 +170,10 @@ export default function App() {
     try {
       const client = getClient(account);
       await client.writeContract({
-        address: CONTRACT_ADDRESS as `0x${string}`,
+        address: CONTRACT_ADDRESS as any,
         functionName: 'respond',
         args: [claimId, responseStatement],
+        value: BigInt(0),
       });
       setResponseStatement('');
       setTxMessage('Response submitted!');
@@ -194,9 +195,10 @@ export default function App() {
     try {
       const client = getClient(account);
       await client.writeContract({
-        address: CONTRACT_ADDRESS as `0x${string}`,
+        address: CONTRACT_ADDRESS as any,
         functionName: 'adjudicate',
         args: [claimId],
+        value: BigInt(0),
       });
       setTxMessage('Verdict delivered!');
       await fetchClaims();
