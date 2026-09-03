@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#12121a"/>
+      <stop offset="1" stop-color="#0a0a0f"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#818cf8"/>
+      <stop offset="0.5" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#4f46e5"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.4" r="0.55">
+      <stop offset="0" stop-color="#6366f1" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#6366f1" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="112" fill="url(#glow)"/>
+  <!-- Balance scales -->
+  <line x1="256" y1="120" x2="256" y2="290" stroke="url(#mark)" stroke-width="16" stroke-linecap="round"/>
+  <!-- Beam -->
+  <line x1="140" y1="200" x2="372" y2="200" stroke="url(#mark)" stroke-width="14" stroke-linecap="round"/>
+  <!-- Left pan chain -->
+  <line x1="160" y1="200" x2="140" y2="280" stroke="url(#mark)" stroke-width="8" stroke-linecap="round"/>
+  <line x1="160" y1="200" x2="220" y2="280" stroke="url(#mark)" stroke-width="8" stroke-linecap="round"/>
+  <!-- Left pan -->
+  <path d="M120 280 Q180 340 240 280" stroke="url(#mark)" stroke-width="12" fill="none" stroke-linecap="round"/>
+  <!-- Right pan chain -->
+  <line x1="352" y1="200" x2="332" y2="280" stroke="url(#mark)" stroke-width="8" stroke-linecap="round"/>
+  <line x1="352" y1="200" x2="412" y2="280" stroke="url(#mark)" stroke-width="8" stroke-linecap="round"/>
+  <!-- Right pan -->
+  <path d="M312 280 Q372 340 432 280" stroke="url(#mark)" stroke-width="12" fill="none" stroke-linecap="round"/>
+  <!-- Fulcrum -->
+  <polygon points="230,290 282,290 256,320" fill="url(#mark)"/>
+  <!-- Base -->
+  <line x1="200" y1="320" x2="312" y2="320" stroke="url(#mark)" stroke-width="12" stroke-linecap="round"/>
+  <!-- Quill nib crossing the post -->
+  <path d="M300 130 L380 380 Q370 400 350 390 L280 160" fill="url(#mark)" opacity="0.6"/>
+  <line x1="375" y1="385" x2="400" y2="410" stroke="url(#mark)" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
+</svg>
