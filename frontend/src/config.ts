@@ -24,7 +24,7 @@ const STUDIONET_CHAIN = {
   blockExplorers: {
     default: {
       name: 'GenLayer Explorer',
-      url: 'https://genlayer-explorer.vercel.app',
+      url: 'https://explorer-studio.genlayer.com',
     },
   },
 };
