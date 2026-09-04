@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { connectWallet, getClient, CONTRACT_ADDRESS } from './config';
+import { connectWallet, getClient, getReadClient, CONTRACT_ADDRESS } from './config';
 
 interface ClaimData {
   id: string;
@@ -84,7 +84,7 @@ const FAQ_ITEMS = [
   {
     question: 'What happens to my bond?',
     answer:
-      'If the verdict confirms substantial similarity (plagiarism), your bond is returned. If the works are found to be independent, the bond may be forfeited as a spam prevention mechanism.',
+      'If the verdict is SUBSTANTIALLY_SIMILAR, your bond is returned. For INDEPENDENT or FAIR_USE, the bond is transferred to the respondent as compensation. For INSUFFICIENT_EVIDENCE, the bond is returned to you. If no respondent filed a defense, the bond is returned regardless.',
   },
   {
     question: 'Is the verdict final?',
@@ -146,32 +146,47 @@ export default function App() {
   };
 
   const fetchClaims = useCallback(async () => {
-    if (!account || !CONTRACT_ADDRESS) return;
+    if (!CONTRACT_ADDRESS) return;
     setLoading(true);
     try {
-      const client = getClient(account);
+      const client = getReadClient();
       const countStr = await client.readContract({
         address: CONTRACT_ADDRESS as any,
         functionName: 'get_claim_count',
         args: [],
       });
       const count = parseInt(countStr as string, 10);
+      if (isNaN(count) || count < 0) {
+        setClaims([]);
+        return;
+      }
       const fetched: ClaimData[] = [];
       for (let i = 0; i < count; i++) {
-        const raw = await client.readContract({
-          address: CONTRACT_ADDRESS as any,
-          functionName: 'get_claim',
-          args: [String(i)],
-        });
-        fetched.push(JSON.parse(raw as string));
+        try {
+          const raw = await client.readContract({
+            address: CONTRACT_ADDRESS as any,
+            functionName: 'get_claim',
+            args: [String(i)],
+          });
+          fetched.push(JSON.parse(raw as string));
+        } catch {
+          // skip individual claim read failures
+        }
       }
       setClaims(fetched);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch claims');
+      console.error('Failed to fetch claims:', err);
+      setError('Could not load claims — the RPC may be temporarily unavailable.');
     } finally {
       setLoading(false);
     }
-  }, [account]);
+  }, []);
+
+  useEffect(() => {
+    if (CONTRACT_ADDRESS) {
+      fetchClaims();
+    }
+  }, [fetchClaims]);
 
   useEffect(() => {
     if (account && CONTRACT_ADDRESS) {

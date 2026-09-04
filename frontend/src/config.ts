@@ -65,10 +65,20 @@ export async function connectWallet(): Promise<string> {
   return accounts[0];
 }
 
-export function getClient(account: string) {
+export function getClient(account?: string) {
+  const opts: any = {
+    chain: STUDIONET_CHAIN,
+    endpoint: 'https://studio.genlayer.com/api',
+  };
+  if (account) {
+    opts.account = account as any;
+  }
+  return createClient(opts);
+}
+
+export function getReadClient() {
   return createClient({
     chain: STUDIONET_CHAIN,
     endpoint: 'https://studio.genlayer.com/api',
-    account: account as any,
   });
 }

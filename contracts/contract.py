@@ -74,8 +74,11 @@ class Contract(gl.Contract):
             raise gl.UserError("Claim is not open for response")
         if not statement.strip():
             raise gl.UserError("Response statement required")
+        caller = _addr_str(gl.message.sender)
+        if caller == claim.claimant:
+            raise gl.UserError("Claimant cannot respond to own claim")
 
-        claim.respondent = _addr_str(gl.message.sender)
+        claim.respondent = caller
         claim.respondent_statement = statement
         claim.status = "RESPONDED"
         self.claims[claim_id] = claim
@@ -146,7 +149,15 @@ Respond ONLY with valid JSON (no markdown, no code fences):
                 my_result = leader_fn()
                 if isinstance(my_result, str):
                     my_result = json.loads(my_result)
-                return my_result["verdict"] == leader_data["verdict"]
+                if my_result["verdict"] != leader_data["verdict"]:
+                    return False
+                leader_sim = int(leader_data.get("similarity_pct", 0))
+                my_sim = int(my_result.get("similarity_pct", 0))
+                if abs(leader_sim - my_sim) > 20:
+                    return False
+                if not leader_data.get("reason", "").strip():
+                    return False
+                return True
             except Exception:
                 return False
 
@@ -167,6 +178,14 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
         if verdict == "SUBSTANTIALLY_SIMILAR":
             gl.get_contract_at(Address(claim.claimant)).emit_transfer(
+                value=u256(claim.bond)
+            )
+        elif verdict == "INSUFFICIENT_EVIDENCE":
+            gl.get_contract_at(Address(claim.claimant)).emit_transfer(
+                value=u256(claim.bond)
+            )
+        elif claim.respondent:
+            gl.get_contract_at(Address(claim.respondent)).emit_transfer(
                 value=u256(claim.bond)
             )
 
