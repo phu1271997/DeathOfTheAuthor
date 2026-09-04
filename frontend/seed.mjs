@@ -8,7 +8,7 @@ const CHAIN = {
   nativeCurrency: { name: "GEN Token", symbol: "GEN", decimals: 18 },
 };
 const ENDPOINT = "https://studio.genlayer.com/api";
-const CONTRACT = "0xf9BB8BDA91458B58f0F7B882b0b9D8398f3c80E5";
+const CONTRACT = "0x4116cf085764E4E53d78408B488B8BAFb5cAE948";
 
 function loadEnv() {
   try {

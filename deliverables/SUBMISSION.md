@@ -27,7 +27,7 @@ Death of the Author is a decentralized copyright adjudication system built on Ge
 ## Contract Address
 
 ```
-0xf9BB8BDA91458B58f0F7B882b0b9D8398f3c80E5
+0x4116cf085764E4E53d78408B488B8BAFb5cAE948
 ```
 
 Network: GenLayer Studionet (Chain ID 61999)
@@ -38,7 +38,7 @@ Network: GenLayer Studionet (Chain ID 61999)
 
 - **Frontend**: https://death-of-the-author.vercel.app
 - **GitHub**: https://github.com/phu1271997/DeathOfTheAuthor
-- **Explorer**: https://explorer-studio.genlayer.com/address/0xf9BB8BDA91458B58f0F7B882b0b9D8398f3c80E5
+- **Explorer**: https://explorer-studio.genlayer.com/address/0x4116cf085764E4E53d78408B488B8BAFb5cAE948
 
 ---
 
@@ -92,4 +92,4 @@ pytest tests/ -m slow -v
 pytest tests/ -v
 ```
 
-Coverage: 17 tests (9 fast, 8 slow) covering file_claim validation, respond flow, all 4 verdict types, double-adjudicate prevention, and full lifecycle.
+Coverage: 18 tests (10 fast, 8 slow) covering file_claim validation, respond flow (including claimant-blocked), all 4 verdict types, double-adjudicate prevention, bond custody, and full lifecycle.
