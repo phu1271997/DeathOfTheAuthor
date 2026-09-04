@@ -151,6 +151,15 @@ class TestRespondFast:
             ).transact()
 
     @pytest.mark.fast
+    def test_respond_claimant_blocked(self, ct):
+        creator = ct.create_account()
+        file_claim(ct, creator)
+        with pytest.raises(Exception):
+            ct.contract.connect(creator).respond(
+                args=["0", "Trying to respond to my own claim"]
+            ).transact()
+
+    @pytest.mark.fast
     def test_respond_already_adjudicated(self, ct):
         creator = ct.create_account()
         file_claim(ct, creator)
