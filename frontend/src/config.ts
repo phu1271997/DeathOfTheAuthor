@@ -80,6 +80,7 @@ export function getReadClient() {
   return createClient({
     chain: STUDIONET_CHAIN,
     endpoint: 'https://studio.genlayer.com/api',
+    account: null as any,
   });
 }
 
