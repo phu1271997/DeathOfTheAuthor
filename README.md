@@ -122,14 +122,18 @@ pytest tests/ -v
 ## Contract Address
 
 ```
-Studionet: <DEPLOY AND PASTE ADDRESS HERE>
+Studionet: 0x4116cf085764E4E53d78408B488B8BAFb5cAE948
 ```
+
+Explorer: https://genlayer-explorer.vercel.app/address/0x4116cf085764E4E53d78408B488B8BAFb5cAE948
+
+Live app: https://death-of-the-author.vercel.app
 
 ## Video Demo
 
-```
-<PASTE VIDEO LINK HERE>
-```
+See `deliverables/SUBMISSION.md` for the recorded end-to-end walkthrough
+(connect wallet, file funded claim, respond from second wallet, adjudicate,
+consensus verdict on-chain).
 
 ## License
 

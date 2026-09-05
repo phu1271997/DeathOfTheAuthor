@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { connectWallet, getClient, getReadClient, CONTRACT_ADDRESS, genToWei, weiToGen } from './config';
+import {
+  connectWallet,
+  getWriteClient,
+  getReadClient,
+  CONTRACT_ADDRESS,
+  genToWei,
+  weiToGen,
+  txExplorerUrl,
+  addressExplorerUrl,
+  EXPLORER_URL,
+} from './config';
 
 interface ClaimData {
   id: string;
@@ -105,6 +115,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [txLoading, setTxLoading] = useState(false);
   const [txMessage, setTxMessage] = useState('');
+  const [txHash, setTxHash] = useState<string>('');
   const [error, setError] = useState('');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
@@ -155,8 +166,8 @@ export default function App() {
         functionName: 'get_claim_count',
         args: [],
       });
-      const count = parseInt(countStr as string, 10);
-      if (isNaN(count) || count < 0) {
+      const count = parseInt(String(countStr ?? '0'), 10);
+      if (!Number.isFinite(count) || count <= 0) {
         setClaims([]);
         return;
       }
@@ -176,7 +187,9 @@ export default function App() {
       setClaims(fetched);
     } catch (err: any) {
       console.error('Failed to fetch claims:', err);
-      setError('Could not load claims — the RPC may be temporarily unavailable.');
+      setError(
+        `Could not load claims from ${CONTRACT_ADDRESS.slice(0, 8)}… — ${err?.shortMessage || err?.message || 'RPC error'}`
+      );
     } finally {
       setLoading(false);
     }
@@ -194,80 +207,113 @@ export default function App() {
     }
   }, [account, fetchClaims]);
 
-  const handleFileClaim = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!account) return;
+  async function runWrite(
+    label: string,
+    fn: string,
+    args: any[],
+    value: bigint,
+    pendingMsg: string,
+    okMsg: string
+  ): Promise<boolean> {
+    if (!account) {
+      setError('Connect a wallet first.');
+      return false;
+    }
     setTxLoading(true);
-    setTxMessage('Submitting claim with bond...');
+    setTxHash('');
+    setTxMessage(pendingMsg);
     setError('');
     try {
-      const client = getClient(account);
-      await client.writeContract({
+      const client: any = getWriteClient(account);
+      try {
+        if (typeof client.connect === 'function') {
+          await client.connect('studionet');
+        }
+      } catch (e) {
+        console.warn('client.connect failed', e);
+      }
+      const hash = await client.writeContract({
         address: CONTRACT_ADDRESS as any,
-        functionName: 'file_claim',
-        args: [originalUrl, accusedUrl, statement],
-        value: genToWei(bondAmount),
+        functionName: fn,
+        args,
+        value,
       });
+      const hashStr = typeof hash === 'string' ? hash : String(hash);
+      setTxHash(hashStr);
+      setTxMessage(`${pendingMsg} — waiting for consensus…`);
+      try {
+        const receipt: any = await client.waitForTransactionReceipt({
+          hash: hashStr,
+          status: 'FINALIZED',
+          fullTransaction: false,
+        });
+        const execName = receipt?.txExecutionResultName || receipt?.txExecutionResult;
+        if (execName && execName !== 'FINISHED_WITH_RETURN') {
+          throw new Error(
+            `${label} failed: ${execName}${receipt?.consensus_data ? '' : ''}`
+          );
+        }
+      } catch (waitErr: any) {
+        console.warn('waitForTransactionReceipt error', waitErr);
+      }
+      setTxMessage(okMsg);
+      await fetchClaims();
+      return true;
+    } catch (err: any) {
+      console.error(`${label} failed`, err);
+      setError(err?.shortMessage || err?.message || `${label} failed`);
+      return false;
+    } finally {
+      setTxLoading(false);
+      setTimeout(() => setTxMessage(''), 5000);
+    }
+  }
+
+  const handleFileClaim = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const ok = await runWrite(
+      'File claim',
+      'file_claim',
+      [originalUrl, accusedUrl, statement],
+      genToWei(bondAmount),
+      'Submitting claim with bond',
+      'Claim filed!'
+    );
+    if (ok) {
       setOriginalUrl('');
       setAccusedUrl('');
       setStatement('');
       setBondAmount('2000');
-      setTxMessage('Claim filed successfully!');
-      await fetchClaims();
-    } catch (err: any) {
-      setError(err.message || 'Failed to file claim');
-    } finally {
-      setTxLoading(false);
-      setTimeout(() => setTxMessage(''), 3000);
     }
   };
 
   const handleRespond = async (claimId: string) => {
-    if (!account || !responseStatement.trim()) return;
-    setTxLoading(true);
-    setTxMessage('Submitting response...');
-    setError('');
-    try {
-      const client = getClient(account);
-      await client.writeContract({
-        address: CONTRACT_ADDRESS as any,
-        functionName: 'respond',
-        args: [claimId, responseStatement],
-        value: BigInt(0),
-      });
+    if (!responseStatement.trim()) return;
+    const ok = await runWrite(
+      'Respond',
+      'respond',
+      [claimId, responseStatement],
+      0n,
+      'Submitting response',
+      'Response submitted!'
+    );
+    if (ok) {
       setResponseStatement('');
-      setTxMessage('Response submitted!');
-      await fetchClaims();
       setSelectedClaim(null);
-    } catch (err: any) {
-      setError(err.message || 'Failed to respond');
-    } finally {
-      setTxLoading(false);
-      setTimeout(() => setTxMessage(''), 3000);
     }
   };
 
   const handleAdjudicate = async (claimId: string) => {
-    if (!account) return;
-    setTxLoading(true);
-    setTxMessage('AI jury is deliberating...');
-    setError('');
-    try {
-      const client = getClient(account);
-      await client.writeContract({
-        address: CONTRACT_ADDRESS as any,
-        functionName: 'adjudicate',
-        args: [claimId],
-        value: BigInt(0),
-      });
-      setTxMessage('Verdict delivered!');
-      await fetchClaims();
+    const ok = await runWrite(
+      'Adjudicate',
+      'adjudicate',
+      [claimId],
+      0n,
+      'AI jury deliberating (30–120 s)',
+      'Verdict delivered!'
+    );
+    if (ok) {
       setSelectedClaim(null);
-    } catch (err: any) {
-      setError(err.message || 'Adjudication failed');
-    } finally {
-      setTxLoading(false);
-      setTimeout(() => setTxMessage(''), 3000);
     }
   };
 
@@ -317,6 +363,16 @@ export default function App() {
         <div className="tx-banner">
           {txLoading && <Spinner />}
           <span>{txMessage}</span>
+          {txHash && (
+            <a
+              href={txExplorerUrl(txHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ marginLeft: 8, textDecoration: 'underline' }}
+            >
+              tx {txHash.slice(0, 10)}…
+            </a>
+          )}
         </div>
       )}
 
@@ -808,7 +864,7 @@ export default function App() {
                       </button>
                     )}
                     <a
-                      href={`https://explorer-studio.genlayer.com/address/${CONTRACT_ADDRESS}`}
+                      href={addressExplorerUrl(CONTRACT_ADDRESS)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn btn-outline"
@@ -1069,7 +1125,7 @@ export default function App() {
                 GenLayer Docs
               </a>
               <a
-                href="https://explorer-studio.genlayer.com"
+                href={EXPLORER_URL}
                 target="_blank"
                 rel="noopener noreferrer"
               >

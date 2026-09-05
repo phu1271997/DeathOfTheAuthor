@@ -10,6 +10,10 @@ import { studionet } from 'genlayer-js/chains';
 export const CONTRACT_ADDRESS = (import.meta as any).env?.VITE_CONTRACT_ADDRESS || '';
 
 const STUDIONET_CHAIN = studionet;
+const RPC_ENDPOINT = 'https://studio.genlayer.com/api';
+
+export const EXPLORER_URL =
+  STUDIONET_CHAIN.blockExplorers?.default?.url || 'https://genlayer-explorer.vercel.app';
 
 const CHAIN_ID_HEX = '0x' + STUDIONET_CHAIN.id.toString(16);
 
@@ -32,7 +36,7 @@ export async function connectWallet(): Promise<string> {
           chainName: STUDIONET_CHAIN.name,
           nativeCurrency: STUDIONET_CHAIN.nativeCurrency,
           rpcUrls: [...STUDIONET_CHAIN.rpcUrls.default.http],
-          blockExplorerUrls: [STUDIONET_CHAIN.blockExplorers?.default?.url || 'https://explorer-studio.genlayer.com'],
+          blockExplorerUrls: [EXPLORER_URL],
         }],
       });
     } else {
@@ -47,23 +51,32 @@ export async function connectWallet(): Promise<string> {
   return accounts[0];
 }
 
-export function getClient(account?: string) {
-  const opts: any = {
-    chain: STUDIONET_CHAIN,
-    endpoint: 'https://studio.genlayer.com/api',
-  };
-  if (account) {
-    opts.account = account as any;
+export function getWriteClient(account: string) {
+  if (!window.ethereum) {
+    throw new Error('MetaMask not found.');
   }
-  return createClient(opts);
+  const client = createClient({
+    chain: STUDIONET_CHAIN,
+    endpoint: RPC_ENDPOINT,
+    account: account as `0x${string}`,
+    provider: window.ethereum,
+  } as any);
+  return client;
 }
 
 export function getReadClient() {
   return createClient({
     chain: STUDIONET_CHAIN,
-    endpoint: 'https://studio.genlayer.com/api',
-    account: null as any,
-  });
+    endpoint: RPC_ENDPOINT,
+  } as any);
+}
+
+export function txExplorerUrl(hash: string): string {
+  return `${EXPLORER_URL.replace(/\/$/, '')}/tx/${hash}`;
+}
+
+export function addressExplorerUrl(addr: string): string {
+  return `${EXPLORER_URL.replace(/\/$/, '')}/address/${addr}`;
 }
 
 const WEI_PER_GEN = 1_000_000_000_000_000_000n;
