@@ -27,8 +27,15 @@ function loadEnv() {
 
 loadEnv();
 
-const pk1 = process.env.PRIVATE_KEY_1;
-const pk2 = process.env.PRIVATE_KEY_2;
+function normalizeKey(raw) {
+  if (!raw) return null;
+  let k = raw.trim().replace(/^["']|["']$/g, "");
+  if (!k.startsWith("0x") && !k.startsWith("0X")) k = "0x" + k;
+  return k.toLowerCase();
+}
+
+const pk1 = normalizeKey(process.env.PRIVATE_KEY_1);
+const pk2 = normalizeKey(process.env.PRIVATE_KEY_2);
 if (!pk1 || !pk2) {
   console.error("Set PRIVATE_KEY_1 and PRIVATE_KEY_2 in .env.seed");
   process.exit(1);
@@ -79,21 +86,21 @@ async function main() {
     "https://en.wikipedia.org/wiki/Copyright",
     "https://en.wikipedia.org/wiki/Copyright_law_of_the_United_States",
     "The accused work reproduces substantial portions of the original article's structure, phrasing, and legal analysis of copyright principles."
-  ], 2000n * 10n ** 18n, "Claim A — similar works (bond 2000 GEN)");
+  ], 100n * 10n ** 18n, "Claim A — similar works (bond 100 GEN)");
 
   // Claim B: completely different works (expect INDEPENDENT)
   await write(client1, "file_claim", [
     "https://en.wikipedia.org/wiki/Python_(programming_language)",
     "https://en.wikipedia.org/wiki/Chocolate_cake",
     "Testing whether AI correctly identifies unrelated content as independent works."
-  ], 2000n * 10n ** 18n, "Claim B — unrelated works (bond 2000 GEN)");
+  ], 100n * 10n ** 18n, "Claim B — unrelated works (bond 100 GEN)");
 
   // Claim C: related but not copied (for respond + adjudicate flow)
   await write(client1, "file_claim", [
     "https://en.wikipedia.org/wiki/Artificial_intelligence",
     "https://en.wikipedia.org/wiki/Machine_learning",
     "The accused work covers overlapping subject matter and may borrow from the original's explanations of AI concepts."
-  ], 2000n * 10n ** 18n, "Claim C — related works for response flow (bond 2000 GEN)");
+  ], 100n * 10n ** 18n, "Claim C — related works for response flow (bond 100 GEN)");
 
   // Wallet 2 responds to Claim C
   const claimCId = String(countBefore + 2);
