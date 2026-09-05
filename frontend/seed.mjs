@@ -79,21 +79,21 @@ async function main() {
     "https://en.wikipedia.org/wiki/Copyright",
     "https://en.wikipedia.org/wiki/Copyright_law_of_the_United_States",
     "The accused work reproduces substantial portions of the original article's structure, phrasing, and legal analysis of copyright principles."
-  ], 2000n, "Claim A — similar works (bond 2000)");
+  ], 2000n * 10n ** 18n, "Claim A — similar works (bond 2000 GEN)");
 
   // Claim B: completely different works (expect INDEPENDENT)
   await write(client1, "file_claim", [
     "https://en.wikipedia.org/wiki/Python_(programming_language)",
     "https://en.wikipedia.org/wiki/Chocolate_cake",
     "Testing whether AI correctly identifies unrelated content as independent works."
-  ], 2000n, "Claim B — unrelated works (bond 2000)");
+  ], 2000n * 10n ** 18n, "Claim B — unrelated works (bond 2000 GEN)");
 
   // Claim C: related but not copied (for respond + adjudicate flow)
   await write(client1, "file_claim", [
     "https://en.wikipedia.org/wiki/Artificial_intelligence",
     "https://en.wikipedia.org/wiki/Machine_learning",
     "The accused work covers overlapping subject matter and may borrow from the original's explanations of AI concepts."
-  ], 2000n, "Claim C — related works for response flow (bond 2000)");
+  ], 2000n * 10n ** 18n, "Claim C — related works for response flow (bond 2000 GEN)");
 
   // Wallet 2 responds to Claim C
   const claimCId = String(countBefore + 2);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { connectWallet, getClient, getReadClient, CONTRACT_ADDRESS } from './config';
+import { connectWallet, getClient, getReadClient, CONTRACT_ADDRESS, genToWei, weiToGen } from './config';
 
 interface ClaimData {
   id: string;
@@ -206,7 +206,7 @@ export default function App() {
         address: CONTRACT_ADDRESS as any,
         functionName: 'file_claim',
         args: [originalUrl, accusedUrl, statement],
-        value: BigInt(bondAmount),
+        value: genToWei(bondAmount),
       });
       setOriginalUrl('');
       setAccusedUrl('');
@@ -662,7 +662,7 @@ export default function App() {
                         </div>
                         <div className="claim-meta">
                           <span className="bond-amount">
-                            Bond: {claim.bond}
+                            Bond: {weiToGen(claim.bond)} GEN
                           </span>
                           <span className="claimant">
                             By: {shortAddr(claim.claimant)}
@@ -705,7 +705,7 @@ export default function App() {
                     <div className="detail-item">
                       <span className="detail-label">Bond</span>
                       <span className="detail-value">
-                        {selectedClaim.bond}
+                        {weiToGen(selectedClaim.bond)} GEN
                       </span>
                     </div>
                     <div className="detail-item full-width">

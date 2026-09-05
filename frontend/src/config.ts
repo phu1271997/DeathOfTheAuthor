@@ -82,3 +82,27 @@ export function getReadClient() {
     endpoint: 'https://studio.genlayer.com/api',
   });
 }
+
+const WEI_PER_GEN = 1_000_000_000_000_000_000n;
+
+export function genToWei(gen: string | number): bigint {
+  const s = String(gen).trim();
+  if (!s || isNaN(Number(s))) return 0n;
+  const [whole, frac = ''] = s.split('.');
+  const fracPadded = (frac + '000000000000000000').slice(0, 18);
+  return BigInt(whole || '0') * WEI_PER_GEN + BigInt(fracPadded || '0');
+}
+
+export function weiToGen(wei: string | number | bigint): string {
+  try {
+    const w = typeof wei === 'bigint' ? wei : BigInt(String(wei || '0'));
+    if (w === 0n) return '0';
+    const whole = w / WEI_PER_GEN;
+    const frac = w % WEI_PER_GEN;
+    if (frac === 0n) return whole.toLocaleString('en-US');
+    const fracStr = frac.toString().padStart(18, '0').replace(/0+$/, '').slice(0, 4);
+    return whole.toLocaleString('en-US') + (fracStr ? '.' + fracStr : '');
+  } catch {
+    return '0';
+  }
+}
