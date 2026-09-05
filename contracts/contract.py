@@ -5,10 +5,25 @@ import json
 
 
 def _addr_str(addr) -> str:
+    # str(Address) returns the checksum hex form on the Studio SDK,
+    # and .as_hex is the same on newer builds — try str() first since it
+    # is present on every version we have tested.
     try:
-        return addr.as_hex
-    except Exception:
         return str(addr)
+    except Exception:
+        try:
+            return addr.as_hex
+        except Exception:
+            return ""
+
+
+def _sender_addr():
+    # Studio SDK exposes it as `sender_address`; newer SDK also has `.sender`.
+    msg = gl.message
+    try:
+        return msg.sender_address
+    except AttributeError:
+        return msg.sender
 
 
 class Contract(gl.Contract):
@@ -45,7 +60,7 @@ class Contract(gl.Contract):
         self.claim_count = u256(int(self.claim_count) + 1)
 
         c = {
-            "claimant": _addr_str(gl.message.sender),
+            "claimant": _addr_str(_sender_addr()),
             "original_url": original_url,
             "accused_url": accused_url,
             "claimant_statement": statement,
@@ -66,7 +81,7 @@ class Contract(gl.Contract):
             raise gl.vm.UserError("Claim is not open for response")
         if not statement.strip():
             raise gl.vm.UserError("Response statement required")
-        caller = _addr_str(gl.message.sender)
+        caller = _addr_str(_sender_addr())
         if caller == c["claimant"]:
             raise gl.vm.UserError("Claimant cannot respond to own claim")
 

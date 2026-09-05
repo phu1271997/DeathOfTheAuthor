@@ -122,10 +122,10 @@ pytest tests/ -v
 ## Contract Address
 
 ```
-Studionet: 0x4116cf085764E4E53d78408B488B8BAFb5cAE948
+Studionet: 0x88FE99762062A4Aa5D1a9F2C08C77ee141418768
 ```
 
-Explorer: https://genlayer-explorer.vercel.app/address/0x4116cf085764E4E53d78408B488B8BAFb5cAE948
+Explorer: https://genlayer-explorer.vercel.app/address/0x88FE99762062A4Aa5D1a9F2C08C77ee141418768
 
 Live app: https://death-of-the-author.vercel.app
 

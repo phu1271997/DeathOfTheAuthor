@@ -27,7 +27,7 @@ Death of the Author is a decentralized copyright adjudication system built on Ge
 ## Contract Address
 
 ```
-0x4116cf085764E4E53d78408B488B8BAFb5cAE948
+0x88FE99762062A4Aa5D1a9F2C08C77ee141418768
 ```
 
 Network: GenLayer Studionet (Chain ID 61999)
@@ -38,7 +38,7 @@ Network: GenLayer Studionet (Chain ID 61999)
 
 - **Frontend**: https://death-of-the-author.vercel.app
 - **GitHub**: https://github.com/phu1271997/DeathOfTheAuthor
-- **Explorer**: https://genlayer-explorer.vercel.app/address/0x4116cf085764E4E53d78408B488B8BAFb5cAE948
+- **Explorer**: https://genlayer-explorer.vercel.app/address/0x88FE99762062A4Aa5D1a9F2C08C77ee141418768
 
 ---
 

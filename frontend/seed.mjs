@@ -4,7 +4,7 @@ import { readFileSync } from "fs";
 
 const CHAIN = studionet;
 const ENDPOINT = "https://studio.genlayer.com/api";
-const CONTRACT = "0x4116cf085764E4E53d78408B488B8BAFb5cAE948";
+const CONTRACT = "0x88FE99762062A4Aa5D1a9F2C08C77ee141418768";
 
 function loadEnv() {
   try {
