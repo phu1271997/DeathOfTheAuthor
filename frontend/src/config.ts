@@ -5,29 +5,11 @@ declare global {
 }
 
 import { createClient } from 'genlayer-js';
+import { studionet } from 'genlayer-js/chains';
 
 export const CONTRACT_ADDRESS = (import.meta as any).env?.VITE_CONTRACT_ADDRESS || '';
 
-const STUDIONET_CHAIN = {
-  id: 61999,
-  name: 'Genlayer Studio Network',
-  rpcUrls: {
-    default: {
-      http: ['https://studio.genlayer.com/api'] as const,
-    },
-  },
-  nativeCurrency: {
-    name: 'GEN Token',
-    symbol: 'GEN',
-    decimals: 18,
-  },
-  blockExplorers: {
-    default: {
-      name: 'GenLayer Explorer',
-      url: 'https://explorer-studio.genlayer.com',
-    },
-  },
-};
+const STUDIONET_CHAIN = studionet;
 
 const CHAIN_ID_HEX = '0x' + STUDIONET_CHAIN.id.toString(16);
 
@@ -50,7 +32,7 @@ export async function connectWallet(): Promise<string> {
           chainName: STUDIONET_CHAIN.name,
           nativeCurrency: STUDIONET_CHAIN.nativeCurrency,
           rpcUrls: [...STUDIONET_CHAIN.rpcUrls.default.http],
-          blockExplorerUrls: [STUDIONET_CHAIN.blockExplorers.default.url],
+          blockExplorerUrls: [STUDIONET_CHAIN.blockExplorers?.default?.url || 'https://explorer-studio.genlayer.com'],
         }],
       });
     } else {
