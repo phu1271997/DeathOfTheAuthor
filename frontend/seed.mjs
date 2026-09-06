@@ -125,7 +125,7 @@ async function main() {
       console.log(`Claim #${i}: status=${c.status} verdict=${c.verdict} similarity=${c.similarity_pct}%`);
     }
   }
-  console.log("\nDone. Check https://death-of-the-author.vercel.app");
+  console.log("\nDone. Check https://deathoftheauthor.vercel.app");
 }
 
 main().catch(console.error);

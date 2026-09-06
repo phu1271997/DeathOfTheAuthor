@@ -36,7 +36,7 @@ Network: GenLayer Studionet (Chain ID 61999)
 
 ## Links
 
-- **Frontend**: https://death-of-the-author.vercel.app
+- **Frontend**: https://deathoftheauthor.vercel.app
 - **GitHub**: https://github.com/phu1271997/DeathOfTheAuthor
 - **Explorer**: https://genlayer-explorer.vercel.app/address/0x88FE99762062A4Aa5D1a9F2C08C77ee141418768
 
