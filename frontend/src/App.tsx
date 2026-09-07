@@ -350,6 +350,21 @@ export default function App() {
     }
   };
 
+  const handleWithdraw = async () => {
+    if (!account) return;
+    const ok = await runWrite(
+      'Withdraw',
+      'withdraw',
+      [],
+      0n,
+      'Withdrawing your escrow credit',
+      'Withdrawal delivered — check your wallet!'
+    );
+    if (ok) {
+      await fetchPendingPayout(account);
+    }
+  };
+
   return (
     <div className="app">
       {/* ===== NAVBAR ===== */}
@@ -656,9 +671,18 @@ export default function App() {
                   <div style={{ fontSize: 18, fontWeight: 600 }}>
                     {weiToGen(pendingPayout)} GEN
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    on-chain claim on the escrow
-                  </div>
+                  <button
+                    className="btn btn-sm btn-primary"
+                    style={{ marginTop: 6 }}
+                    onClick={handleWithdraw}
+                    disabled={
+                      txLoading ||
+                      !pendingPayout ||
+                      pendingPayout === '0'
+                    }
+                  >
+                    {txLoading ? 'Working…' : 'Withdraw'}
+                  </button>
                 </div>
                 <div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>

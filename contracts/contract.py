@@ -4,6 +4,22 @@ from genlayer import *
 import json
 
 
+# EVM contract interface used to address an EOA (or an EVM contract).
+# `gl.get_contract_at(addr).emit_transfer(...)` addresses an Intelligent
+# Contract; on the studionet GenVM it fails with "Contract not found"
+# when the target is an EOA. Sending through an EVM interface routes
+# the transfer over the chain layer (external message) which delivers
+# the value to any address, including EOAs. Docs:
+# https://docs.genlayer.com — "Sending Value to an EOA or EVM Contract".
+@gl.evm.contract_interface
+class _Payee:
+    class View:
+        pass
+
+    class Write:
+        pass
+
+
 def _addr_str(addr) -> str:
     # str(Address) returns the checksum hex form on the Studio SDK,
     # and .as_hex is the same on newer builds — try str() first since it
@@ -55,18 +71,15 @@ class Contract(gl.Contract):
         self.claims[claim_id] = json.dumps(c)
 
     def _credit_add(self, who: str, amount: int) -> None:
+        # Moves `amount` from the general escrow pool into `who`'s
+        # withdrawable credit. It does NOT change `total_escrow`, which
+        # tracks the whole pool (unadjudicated + credited) so the
+        # invariant `contract.balance == total_escrow` holds through
+        # every state.
         if amount <= 0:
             return
         cur = int(self.escrow_credits.get(who, "0") or "0")
         self.escrow_credits[who] = str(cur + amount)
-        self.total_escrow = u256(int(self.total_escrow) + amount)
-
-    def _credit_take(self, who: str) -> int:
-        cur = int(self.escrow_credits.get(who, "0") or "0")
-        if cur > 0:
-            self.escrow_credits[who] = "0"
-            self.total_escrow = u256(int(self.total_escrow) - cur)
-        return cur
 
     # ---- filing ----------------------------------------------------------
     @gl.public.write.payable
@@ -83,6 +96,7 @@ class Contract(gl.Contract):
 
         claim_id = str(int(self.claim_count))
         self.claim_count = u256(int(self.claim_count) + 1)
+        self.total_escrow = u256(int(self.total_escrow) + bond)
 
         c = {
             "claimant": _addr_str(_sender_addr()),
@@ -216,12 +230,11 @@ Respond ONLY with valid JSON (no markdown, no code fences):
         else:
             winner = c["claimant"]
 
-        # Credit the winner inside the escrow. We DO NOT emit_transfer here
-        # because the studionet build of the GenVM cannot deliver a value
-        # transfer to an EOA (the child tx aborts with "Contract not found"
-        # and the bond becomes stranded inside the contract). Recording the
-        # credit and exposing `withdraw()` keeps the invariant
-        # `contract.balance == total_escrow` verifiable on the explorer.
+        # Credit the winner inside the escrow (pull-payment pattern).
+        # `withdraw()` is a separate transaction the winner signs, which
+        # keeps adjudication cheap and lets the invariant
+        # `contract.balance == total_escrow` be checked between the two
+        # steps by anyone reading the chain.
         self._credit_add(winner, bond_amt)
 
         c["verdict"] = verdict
@@ -233,29 +246,44 @@ Respond ONLY with valid JSON (no markdown, no code fences):
         self._save(claim_id, c)
 
     # ---- payout ----------------------------------------------------------
-    # NOTE (studionet): the hosted GenVM on studio.genlayer.com cannot
-    # deliver a native-value `emit_transfer` message to an externally-
-    # owned account (EOA). The receiver-resolution stage of the child
-    # transaction aborts with "Contract 0x... not found" and the value
-    # is destroyed on the way out of the contract — so on studionet we
-    # DO NOT expose a withdraw() method. Bonds live inside the contract
-    # as `escrow_credits[winner_addr]`, invariant-checked against the
-    # contract's own native balance, and the winner's claim is visible
-    # via `get_pending_payout()`. On networks whose GenVM supports EOA
-    # transfers (testnet-bradbury and beyond) the analogous method is:
-    #
-    #     @gl.public.write
-    #     def withdraw(self) -> None:
-    #         me = _addr_str(_sender_addr())
-    #         owed = int(self.escrow_credits.get(me, "0") or "0")
-    #         if owed <= 0:
-    #             raise gl.vm.UserError("Nothing to withdraw")
-    #         self.escrow_credits[me] = "0"
-    #         self.total_escrow = u256(int(self.total_escrow) - owed)
-    #         gl.get_contract_at(_sender_addr()).emit_transfer(value=u256(owed))
-    #
-    # We intentionally do NOT ship that method here because on studionet
-    # it would drain the escrow into the void.
+    @gl.public.write
+    def withdraw(self) -> None:
+        """
+        Pull-payment. Caller receives whatever the contract owes them.
+
+        Routes the transfer through an EVM contract interface so it is
+        delivered as an external (chain-layer) message rather than an
+        internal IC-to-IC message. The internal path (`gl.get_contract_at`)
+        cannot resolve an EOA on studionet and would strand the value; the
+        external path targets the address on the chain layer directly and
+        works for both EOAs and contracts.
+        """
+        me = _addr_str(_sender_addr())
+        owed = int(self.escrow_credits.get(me, "0") or "0")
+        if owed <= 0:
+            raise gl.vm.UserError("Nothing to withdraw")
+        # Checks-effects-interactions: zero the credit and shrink the
+        # pool before dispatching the value transfer.
+        self.escrow_credits[me] = "0"
+        self.total_escrow = u256(int(self.total_escrow) - owed)
+        _Payee(_sender_addr()).emit_transfer(value=u256(owed))
+
+    @gl.public.write
+    def withdraw_to(self, target_hex: str) -> None:
+        """
+        Same as `withdraw`, but sends the credited amount to `target_hex`
+        instead of `msg.sender`. Useful when the beneficiary wants the
+        payout on a separate wallet (or a multisig / contract address).
+        """
+        me = _addr_str(_sender_addr())
+        owed = int(self.escrow_credits.get(me, "0") or "0")
+        if owed <= 0:
+            raise gl.vm.UserError("Nothing to withdraw")
+        if not target_hex.strip():
+            raise gl.vm.UserError("Target address required")
+        self.escrow_credits[me] = "0"
+        self.total_escrow = u256(int(self.total_escrow) - owed)
+        _Payee(Address(target_hex)).emit_transfer(value=u256(owed))
 
     # ---- views -----------------------------------------------------------
     @gl.public.view

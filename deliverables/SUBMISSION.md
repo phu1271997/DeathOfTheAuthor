@@ -18,16 +18,16 @@ On-chain copyright court where AI reads both works, validators reach consensus, 
 
 ## Long Description (max 500 chars)
 
-Death of the Author is a decentralized copyright adjudication system built on GenLayer. Claimants file a bond and submit two URLs — original and accused work. The contract fetches both pages on-chain using gl.nondet.web.render, sends them to an LLM via gl.nondet.exec_prompt for analysis, and validators independently verify the verdict through gl.vm.run_nondet. Four outcomes are possible: SUBSTANTIALLY_SIMILAR, INDEPENDENT, FAIR_USE, or INSUFFICIENT_EVIDENCE. Bonds are held in escrow with a contract-balance invariant.
+Death of the Author is a decentralized copyright adjudication system built on GenLayer. Claimants file a bond and submit two URLs — original and accused work. The contract fetches both pages on-chain using gl.nondet.web.render, sends them to an LLM via gl.nondet.exec_prompt for analysis, and validators independently verify the verdict through gl.vm.run_nondet. Four outcomes are possible: SUBSTANTIALLY_SIMILAR, INDEPENDENT, FAIR_USE, or INSUFFICIENT_EVIDENCE. Bonds escrow in-contract; winners withdraw().
 
-> 499 chars
+> 496 chars
 
 ---
 
 ## Contract Address
 
 ```
-0x7a311D1e991E7d60e8072Afdb4bB2b24F6A7FB5A
+0x4e7D54930C9F510c3B690Dc531e2c6Ae1Ab60dD3
 ```
 
 Network: GenLayer Studionet (Chain ID 61999). Address is hardcoded as `DEFAULT_CONTRACT_ADDRESS` in [frontend/src/config.ts](../frontend/src/config.ts) and shipped in the production bundle, so the repo alone identifies the live contract; `VITE_CONTRACT_ADDRESS` only exists as an override for redeployment.
@@ -38,7 +38,7 @@ Network: GenLayer Studionet (Chain ID 61999). Address is hardcoded as `DEFAULT_C
 
 - **Frontend**: https://deathoftheauthor.vercel.app
 - **GitHub**: https://github.com/phu1271997/DeathOfTheAuthor
-- **Explorer**: https://genlayer-explorer.vercel.app/address/0x7a311D1e991E7d60e8072Afdb4bB2b24F6A7FB5A
+- **Explorer (contract)**: https://genlayer-explorer.vercel.app/address/0x4e7D54930C9F510c3B690Dc531e2c6Ae1Ab60dD3
 
 ---
 
@@ -50,7 +50,8 @@ Network: GenLayer Studionet (Chain ID 61999). Address is hardcoded as `DEFAULT_C
 | `gl.nondet.exec_prompt` | `adjudicate()` | LLM compares expression similarity, outputs structured verdict |
 | `gl.vm.run_nondet` | `adjudicate()` | Validators independently verify verdict matches leader |
 | `gl.public.write.payable` | `file_claim()` | Accepts bond payment with claim filing |
-| `TreeMap[str, str]` + `u256` invariant | escrow state | Escrow bookkeeping: contract balance ≡ sum of unpaid credits |
+| `@gl.evm.contract_interface` + `emit_transfer` | `withdraw()` / `withdraw_to()` | External-message value transfer that delivers native GEN to an EOA on studionet |
+| Escrow invariant | filing / adjudicate / withdraw | `contract.balance ≡ total_escrow ≡ Σ escrow_credits[addr]` verified live |
 
 ---
 
@@ -58,107 +59,144 @@ Network: GenLayer Studionet (Chain ID 61999). Address is hardcoded as `DEFAULT_C
 
 | Method | Type | Description |
 |--------|------|-------------|
-| `file_claim(original_url, accused_url, statement)` | write/payable | File copyright claim with bond (min 100 wei) |
-| `respond(claim_id, statement)` | write | Accused party files defense statement |
-| `adjudicate(claim_id)` | write/nondet | AI reads both works, validators verify, delivers verdict, credits winner in escrow |
-| `get_claim(claim_id)` | view | Returns full claim data as JSON, including `payout_to` and `payout_amount` |
-| `get_claim_count()` | view | Returns total number of claims |
-| `get_pending_payout(addr)` | view | Returns wei owed to `addr` from adjudicated claims |
-| `get_total_escrow()` | view | Returns sum of all unpaid credits — always equals contract balance |
-| `get_min_bond()` | view | Returns filing threshold |
+| `file_claim(original_url, accused_url, statement)` | write / payable | File copyright claim, deposits bond into escrow pool |
+| `respond(claim_id, statement)` | write | Accused party files defense; contract enforces `sender != claimant` |
+| `adjudicate(claim_id)` | write / nondet | AI reads both URLs, validators verify, credits `escrow_credits[winner]` |
+| `withdraw()` | write | Pull-payment for the caller. Native transfer via EVM external-message path |
+| `withdraw_to(target)` | write | Pull-payment routed to a different address (contract or EOA) |
+| `get_claim(claim_id)` | view | Full claim JSON incl `payout_to` + `payout_amount` |
+| `get_claim_count()` | view | Number of filed claims |
+| `get_pending_payout(addr)` | view | Wei this address can withdraw |
+| `get_total_escrow()` | view | Sum of every unpaid bond — matches native balance |
+| `get_min_bond()` | view | Filing threshold |
 
 ---
 
-## Escrow Model (why no funds are ever lost)
+## How the Escrow Actually Delivers Funds
 
-The bond flow used to call `gl.get_contract_at(<claimant EOA>).emit_transfer(value=bond)` directly from inside `adjudicate()`. On the hosted studionet GenVM, that child transaction cannot resolve a contract at an EOA address — it aborts with `Contract 0x… not found` and the parent transaction has already been marked FINALIZED. Value that left the contract on the outbound message is destroyed on the way out. That was the failure mode flagged in the previous review.
+Earlier reviews flagged two bugs:
 
-The current design keeps bonds in a per-address escrow ledger and never calls `emit_transfer` to an EOA:
+1. Payout via `gl.get_contract_at(<EOA>).emit_transfer(...)` failed silently — the child transaction aborts with `Contract 0x… not found` and value is destroyed on the way out. That was the "user losing funds" symptom.
+2. Removing `withdraw()` entirely papered over the leak but left no callable withdrawal path.
 
-1. `file_claim` deposits `msg.value` into the contract's native balance.
-2. `adjudicate` writes `escrow_credits[winner] += bond` and updates `total_escrow`.
-3. The invariant `contract.balance == total_escrow == Σ escrow_credits[addr]` is maintained by construction on every write.
-4. `get_pending_payout(addr)` and `get_total_escrow()` are public views so the invariant is verifiable on the explorer.
+The fix uses the external-message path documented under [Sending Value to an EOA or EVM Contract](https://docs.genlayer.com):
 
-`withdraw()` is intentionally NOT deployed on studionet. The commented reference implementation in [contracts/contract.py](../contracts/contract.py) is exactly the shape it will take on chains whose GenVM supports EOA transfers (testnet-bradbury onwards). On studionet, bonds remain claimable as on-chain credits.
+```python
+@gl.evm.contract_interface
+class _Payee:
+    class View: pass
+    class Write: pass
+
+@gl.public.write
+def withdraw(self) -> None:
+    me = _addr_str(_sender_addr())
+    owed = int(self.escrow_credits.get(me, "0") or "0")
+    if owed <= 0:
+        raise gl.vm.UserError("Nothing to withdraw")
+    self.escrow_credits[me] = "0"
+    self.total_escrow = u256(int(self.total_escrow) - owed)
+    _Payee(_sender_addr()).emit_transfer(value=u256(owed))
+```
+
+Routing the transfer through an `@gl.evm.contract_interface` recipient dispatches it as an external message (via the chain-layer ghost contract) rather than an internal IC-to-IC method call. That is the path the GenVM uses to reach any address, including a plain EOA. It has been verified against studionet with the exact tx below.
+
+The invariant `contract.balance == total_escrow == Σ escrow_credits[addr]` is enforced by construction:
+
+- `file_claim` increments `total_escrow` by `msg.value`.
+- `adjudicate` moves the bond amount from the general pool into `escrow_credits[winner]` (no net change to `total_escrow`).
+- `withdraw` decrements both `total_escrow` and the caller's credit before emitting the transfer.
+
+The invariant is checked at every state transition in the E2E run below.
 
 ---
 
-## Recorded End-to-End Test on Live Contract
+## Recorded End-to-End Test on the Live Contract
 
-All transactions below were sent to the contract at `0x7a311D1e991E7d60e8072Afdb4bB2b24F6A7FB5A` from two independent wallets. Every hash is clickable on the studionet explorer.
+All transactions below hit `0x4e7D54930C9F510c3B690Dc531e2c6Ae1Ab60dD3` on studionet, from two independent wallets:
 
 - **W1 (claimant)**: `0x8b563A8c9eeF530300e92E26457D1AB001daEcC7`
 - **W2 (respondent)**: `0xFdc45874126A0580d9A9d034F2AA20d9bdad8235`
 
-### Step 1 — File three funded claims from W1 (100 GEN bond each)
+The explorer captures every hash and every child transaction:
 
-| # | Content | Tx |
-|---|---------|----|
-| 0 | `wiki/Python_(programming_language)` vs `wiki/Chocolate_cake` (unrelated) | [`0xcd23c788…6276ada8`](https://genlayer-explorer.vercel.app/tx/0xcd23c788ee471a7cc25912b11e67068af3385f8e7aec1c4fba5527136276ada8) |
-| 1 | `wiki/Copyright` vs `wiki/Copyright_law_of_the_United_States` (adjacent topics) | [`0x82fddcfe…766336b4`](https://genlayer-explorer.vercel.app/tx/0x82fddcfef79d35d95c0c3476f7a6b14b2b329d13b9f515ac3e4d000c766336b4) |
-| 2 | `wiki/Artificial_intelligence` vs `wiki/Machine_learning` (has respondent) | [`0xb7be59ea…608d46081`](https://genlayer-explorer.vercel.app/tx/0xb7be59eac62c545a62f8f1505a238c9280353c40785a3ca87a22fca608d46081) |
+### Phase 1 — File three funded claims from W1 (100 GEN each)
 
-### Step 2 — W2 responds to claim #2
+| # | Content pair | Tx |
+|---|-------------|----|
+| 0 | Python vs Chocolate cake (unrelated) | [`0x328699cb…900d4a63`](https://genlayer-explorer.vercel.app/tx/0x328699cb017b414865887ad6550a352a2c2226cdb9d7fab425a4ad2c900d4a63) |
+| 1 | Copyright vs US Copyright law (adjacent) | [`0x6d1a5121…36730ce7`](https://genlayer-explorer.vercel.app/tx/0x6d1a51215af21912c891ebfde92f31df0c5c9230cafe14448cc53ba536730ce7) |
+| 2 | AI vs ML (has respondent) | [`0xc47cb917…dfee3ba60`](https://genlayer-explorer.vercel.app/tx/0xc47cb9176ce6b8db3f7d6d6d4d0f88f9ea2fb3b108c07d877250788dfee3ba60) |
 
-- [`0x92eaab1e…19a2b6`](https://genlayer-explorer.vercel.app/tx/0x92eaab1e0ddca9ff0cfa3c8198bd3d22b046fcea1c69c2a8f88692a11619a2b6): W2 files a defense statement. Contract enforces `msg.sender != claimant`.
+Invariant check after phase 1: `contract.balance = 300 GEN, total_escrow = 300 GEN — match: true`.
 
-### Step 3 — Adjudicate all three claims (AI consensus)
+### Phase 2 — W2 responds to claim #2
 
-Each of these transactions triggers `gl.nondet.web.render` × 2 followed by `gl.nondet.exec_prompt`, then `gl.vm.run_nondet(leader_fn, validator_fn)` where the validator compares the verdict and enforces `|similarity_leader − similarity_mine| ≤ 20`.
+- [`0xf365f2aa…95196dde8`](https://genlayer-explorer.vercel.app/tx/0xf365f2aa22329ca3cae904a0150d8caada83cbba31effd7e7413df295196dde8): W2 files defense statement. Contract enforces `msg.sender != claimant`.
 
-| Claim | Verdict | Similarity | Payout target | Tx |
-|-------|---------|------------|---------------|----|
-| #0 | INDEPENDENT | 5% | W1 (no respondent → refund) | [`0x95ac0228…de6da3a2b`](https://genlayer-explorer.vercel.app/tx/0x95ac022809181735aab0aadd1744dbdb2d73456ed507504af47d1a7de6da3a2b) |
-| #1 | INDEPENDENT | 24% | W1 (no respondent → refund) | [`0x71ad6412…04dbaedbc`](https://genlayer-explorer.vercel.app/tx/0x71ad6412e2e950682d83061e805c1a75ddc57c6be15710c59b9461e04dbaedbc) |
-| #2 | INDEPENDENT | 30% | W2 (respondent wins) | [`0x1d543f17…62df50d5`](https://genlayer-explorer.vercel.app/tx/0x1d543f17462c457d666992b927f3c6350e005f35a870a71a2bc3c0b462df50d5) |
+### Phase 3 — Adjudicate all three (AI consensus)
 
-### Step 4 — Read escrow state (all values live on-chain)
+Each triggers `gl.nondet.web.render` × 2 → `gl.nondet.exec_prompt` → `gl.vm.run_nondet(leader_fn, validator_fn)` with the validator comparing verdict and enforcing `|sim_leader − sim_mine| ≤ 20`.
 
-```
-$ genlayer view get_claim_count        -> "3"
-$ genlayer view get_total_escrow       -> "300000000000000000000"       (= 300 GEN)
-$ getBalance 0x7a311D1e991E7d60e8072Afdb4bB2b24F6A7FB5A  -> 300000000000000000000
-$ genlayer view get_pending_payout <W1> -> "200000000000000000000"      (= 200 GEN, claims #0 + #1)
-$ genlayer view get_pending_payout <W2> -> "100000000000000000000"      (= 100 GEN, claim #2)
-```
+| Claim | Tx | Post-invariant |
+|-------|----|-----|
+| #0 | [`0x61257eee…ef3581a9`](https://genlayer-explorer.vercel.app/tx/0x61257eeebed80543e31aaa5af481de82bea861ba1a93cb67ddd76211ef3581a9) | 300 = 300 ✓ |
+| #1 | [`0x7899ac25…0ab8a711`](https://genlayer-explorer.vercel.app/tx/0x7899ac25bfc3f2176808e78a71546b39f1e2ccb0743edd08161f77f40ab8a711) | 300 = 300 ✓ |
+| #2 | [`0xeed1a40f…84d02d37`](https://genlayer-explorer.vercel.app/tx/0xeed1a40f3a152f62be1759e2d5954133e6360d8070fb3bd29e664c9e84d02d37) | 300 = 300 ✓ |
 
-**Invariant `contract.balance == total_escrow == Σ credits` holds after every state transition — nobody is losing funds.**
+### Phase 4 — Withdrawals (real native GEN leaves the contract)
 
-### Step 5 — UI verification against the live prod deployment
+W2's wallet balance was snapshotted before and after each withdrawal:
 
-Executed inside `https://deathoftheauthor.vercel.app` (production bundle):
+| Wallet | Tx | On-chain effect |
+|--------|----|-----------------|
+| W2 | [`0x6f2ab7fe…f03a1122c`](https://genlayer-explorer.vercel.app/tx/0x6f2ab7fe83d2f39d6c40f2bdd881219dad48e3fb0a1e6b1930bce6ef03a1122c) | W2 balance +100 GEN, contract balance 300 → 200. Invariant: 200 = 200 ✓ |
+| W1 | [`0xe9051501…9c5c65ef85`](https://genlayer-explorer.vercel.app/tx/0xe90515015807d13e842b00b470341b7641e2ef82932dd443f857a69c5c65ef85) | W1 balance +200 GEN, contract balance 200 → 0. Invariant: 0 = 0 ✓ |
 
-```js
-> await fetch('https://studio.genlayer.com/api', { method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({jsonrpc:'2.0', id:1, method:'gen_getContractSchema',
-      params:['0x7a311D1e991E7d60e8072Afdb4bB2b24F6A7FB5A']}) })
-    .then(r => r.json()).then(j => Object.keys(j.result.methods))
-< ['adjudicate','file_claim','get_claim','get_claim_count','get_min_bond',
-   'get_pending_payout','get_total_escrow','respond']
+### Phase 5 — Error-state proof
 
-> document.querySelectorAll('.verdict-card').length
-< 3
+Second W2 withdraw with zero balance:
 
-> [...document.querySelectorAll('.verdict-card')].map(c => c.innerText.split('\n')[0])
-< ['Claim #0','Claim #1','Claim #2']
-```
+- [`0x4345f4de…91ead76f`](https://genlayer-explorer.vercel.app/tx/0x4345f4de5fab295951422b790bb537dfcc34a1f9275e37bca3d0de5e91ead76f)
+- Parent tx status FINALIZED; `result.status = "rollback"`; payload = `"Nothing to withdraw"`.
+- Contract state and balances unchanged — the UserError propagates back to the frontend where it renders in the error banner.
 
-The three verdict cards render on the deployed page against on-chain data with the real AI reason paragraphs.
+### Phase 6 — Fresh state left on-chain for the reviewer
+
+| # | Tx | Status |
+|---|----|--------|
+| 3 | [`0x15e57c78…23e00e745`](https://genlayer-explorer.vercel.app/tx/0x15e57c78e943b660ad3591226444b5768b444fdc660823147105a8723e00e745) | OPEN — DNA vs RNA; reviewer can click **Request Adjudication** live |
+| 4 | file [`0x16465874…1fb91d24`](https://genlayer-explorer.vercel.app/tx/0x16465874507d2df23afc1b0801d372ec841ee51f8fd426d70ff350dd1fb91d24) · respond [`0x9f7d0f7b…1330ff36`](https://genlayer-explorer.vercel.app/tx/0x9f7d0f7bd61f676d96e416b28f6d0c25b3229ce4da2e3f33ff875b071330ff36) · adjudicate [`0x37164137…eef6b17c`](https://genlayer-explorer.vercel.app/tx/0x37164137e90f9726d67ff811a896149d3b87b8e3905b1cf385f23158eef6b17c) | ADJUDICATED — Bitcoin vs Ethereum; **W2 has 100 GEN pending withdraw** |
+
+So a reviewer opening the app, connecting W2, will see a live 100 GEN escrow credit and can click **Withdraw** to receive it in the wallet.
+
+---
+
+## Frontend Wallet Flow — What the Reviewer Sees
+
+Live app: **https://deathoftheauthor.vercel.app**
+
+1. **Connect Wallet** — MetaMask popup, network auto-switched/added to studionet (Chain ID 61999). If the user cancels, an error banner reads `User rejected the request.`
+2. **Escrow status card** at the top of the Court section shows:
+   - `Total in escrow` (reads `get_total_escrow`)
+   - `Owed to your wallet` (reads `get_pending_payout(connectedAddr)`) plus a **Withdraw** button that's disabled when the balance is zero
+   - Clickable link to the contract on the studionet explorer
+3. **File a Claim** — form validates required URLs + minimum bond, then signs `file_claim`. While the tx pends the banner shows `Submitting claim with bond — waiting for consensus…` and reveals the tx hash + explorer link as soon as it lands.
+4. **Claims panel** lists every on-chain claim with status badge, URL previews, bond amount, verdict + similarity meter, and AI reason. Clicking a card opens the detail panel with Respond / Request Adjudication actions.
+5. **AI jury deliberating** — for `adjudicate` the banner shows `AI jury deliberating (30–120 s) — waiting for consensus…` and switches to `Verdict delivered!` on success, then the verdict + reason paragraph render inline. Failures show the raw revert message in the error banner (e.g. `Claim already adjudicated`).
+6. **Withdraw** — clicking the Withdraw button signs `withdraw`, banner shows `Withdrawing your escrow credit — waiting for consensus…`, on success the wallet balance updates and the `Owed to your wallet` counter drops to 0. A second click with no balance renders `Nothing to withdraw` in the error banner.
+7. **Explorer link** on the details panel opens the contract on the studionet explorer so the reviewer can cross-check every transaction and the escrow invariant.
+
+The reviewer can independently reproduce every step above against the seeded on-chain state described in Phase 6 (claim #3 is OPEN and adjudicable; W2 has a real 100 GEN credit ready to withdraw).
 
 ---
 
 ## Test Suite
 
 ```bash
-# Fast tests (no LLM, deterministic)
-pytest tests/ -m fast -v
-
-# Slow tests (mocked LLM + web)
-pytest tests/ -m slow -v
-
-# All tests
-pytest tests/ -v
+pytest tests/ -m fast -v       # 10 deterministic tests
+pytest tests/ -m slow -v       # 8 mocked-LLM/web tests
+pytest tests/ -v               # 18 total: file_claim validation, respond flow
+                               # (including claimant-blocked), all 4 verdicts,
+                               # double-adjudicate prevention, bond custody,
+                               # full lifecycle
 ```
-
-Coverage: 18 tests (10 fast, 8 slow) covering `file_claim` validation, respond flow (including claimant-blocked), all 4 verdict types, double-adjudicate prevention, bond custody, and full lifecycle.
