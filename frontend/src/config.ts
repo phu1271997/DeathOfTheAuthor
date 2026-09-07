@@ -7,7 +7,15 @@ declare global {
 import { createClient } from 'genlayer-js';
 import { studionet } from 'genlayer-js/chains';
 
-export const CONTRACT_ADDRESS = (import.meta as any).env?.VITE_CONTRACT_ADDRESS || '';
+// Default studionet deployment. The env var VITE_CONTRACT_ADDRESS
+// overrides this so we can re-point at a fresh deploy without rebuilding
+// the source, but the constant ships in the bundle so the repo (and
+// anyone reading the code) always sees the live contract address.
+export const DEFAULT_CONTRACT_ADDRESS =
+  '0x7a311D1e991E7d60e8072Afdb4bB2b24F6A7FB5A';
+
+export const CONTRACT_ADDRESS =
+  (import.meta as any).env?.VITE_CONTRACT_ADDRESS || DEFAULT_CONTRACT_ADDRESS;
 
 const STUDIONET_CHAIN = studionet;
 const RPC_ENDPOINT = 'https://studio.genlayer.com/api';

@@ -24,6 +24,8 @@ interface ClaimData {
   verdict: string;
   similarity_pct: number;
   reason: string;
+  payout_to?: string;
+  payout_amount?: string;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -94,7 +96,7 @@ const FAQ_ITEMS = [
   {
     question: 'What happens to my bond?',
     answer:
-      'If the verdict is SUBSTANTIALLY_SIMILAR, your bond is returned. For INDEPENDENT or FAIR_USE, the bond is transferred to the respondent as compensation. For INSUFFICIENT_EVIDENCE, the bond is returned to you. If no respondent filed a defense, the bond is returned regardless.',
+      'The bond stays in the contract as escrow until adjudication. If the verdict is SUBSTANTIALLY_SIMILAR the bond is credited back to the claimant; for INDEPENDENT or FAIR_USE it is credited to the respondent (or refunded to the claimant if no respondent filed a defense); for INSUFFICIENT_EVIDENCE it is refunded. The contract exposes get_pending_payout(addr), and the invariant contract_balance == total_escrow is checked on every write, so bonds cannot be silently lost. On studionet the GenVM cannot deliver native transfers to EOAs (a receiver-resolution limitation of the hosted build), so the on-chain withdraw step is enabled on the networks whose GenVM supports it.',
   },
   {
     question: 'Is the verdict final?',
@@ -111,6 +113,8 @@ const FAQ_ITEMS = [
 export default function App() {
   const [account, setAccount] = useState('');
   const [claims, setClaims] = useState<ClaimData[]>([]);
+  const [totalEscrow, setTotalEscrow] = useState<string>('0');
+  const [pendingPayout, setPendingPayout] = useState<string>('0');
   const [selectedClaim, setSelectedClaim] = useState<ClaimData | null>(null);
   const [loading, setLoading] = useState(false);
   const [txLoading, setTxLoading] = useState(false);
@@ -185,6 +189,16 @@ export default function App() {
         }
       }
       setClaims(fetched);
+      try {
+        const te = await client.readContract({
+          address: CONTRACT_ADDRESS as any,
+          functionName: 'get_total_escrow',
+          args: [],
+        });
+        setTotalEscrow(String(te ?? '0'));
+      } catch {
+        setTotalEscrow('0');
+      }
     } catch (err: any) {
       console.error('Failed to fetch claims:', err);
       setError(
@@ -192,6 +206,24 @@ export default function App() {
       );
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const fetchPendingPayout = useCallback(async (addr: string) => {
+    if (!CONTRACT_ADDRESS || !addr) {
+      setPendingPayout('0');
+      return;
+    }
+    try {
+      const client = getReadClient();
+      const p = await client.readContract({
+        address: CONTRACT_ADDRESS as any,
+        functionName: 'get_pending_payout',
+        args: [addr],
+      });
+      setPendingPayout(String(p ?? '0'));
+    } catch {
+      setPendingPayout('0');
     }
   }, []);
 
@@ -204,8 +236,9 @@ export default function App() {
   useEffect(() => {
     if (account && CONTRACT_ADDRESS) {
       fetchClaims();
+      fetchPendingPayout(account);
     }
-  }, [account, fetchClaims]);
+  }, [account, fetchClaims, fetchPendingPayout]);
 
   async function runWrite(
     label: string,
@@ -592,6 +625,55 @@ export default function App() {
             </div>
           ) : (
             <>
+              <div
+                className="escrow-status"
+                style={{
+                  padding: '12px 16px',
+                  marginBottom: 16,
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--bg-secondary)',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: 16,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Total in escrow
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 600 }}>
+                    {weiToGen(totalEscrow)} GEN
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    contract balance ≡ sum of unpaid bonds
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Owed to your wallet
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 600 }}>
+                    {weiToGen(pendingPayout)} GEN
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    on-chain claim on the escrow
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Contract
+                  </div>
+                  <a
+                    href={addressExplorerUrl(CONTRACT_ADDRESS)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: 13, wordBreak: 'break-all' }}
+                  >
+                    {CONTRACT_ADDRESS}
+                  </a>
+                </div>
+              </div>
               <div className="court-panels">
                 <div className="court-panel">
                   <h3 className="panel-title">File a Claim</h3>

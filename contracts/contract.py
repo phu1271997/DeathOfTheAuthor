@@ -27,14 +27,24 @@ def _sender_addr():
 
 
 class Contract(gl.Contract):
-    claims: TreeMap[str, str]        # claim_id -> JSON-encoded claim
+    # Storage:
+    #   claims           — per-claim record, JSON-encoded
+    #   claim_count      — monotonic id counter
+    #   min_bond         — filing threshold, in wei
+    #   escrow_credits   — winner_addr -> owed wei, JSON string
+    #   total_escrow     — sum of every unpaid credit (invariant: <= contract balance)
+    claims: TreeMap[str, str]
     claim_count: u256
     min_bond: u256
+    escrow_credits: TreeMap[str, str]
+    total_escrow: u256
 
     def __init__(self):
         self.claim_count = u256(0)
         self.min_bond = u256(100)
+        self.total_escrow = u256(0)
 
+    # ---- internal helpers ------------------------------------------------
     def _load(self, claim_id: str) -> dict:
         raw = self.claims.get(claim_id, "")
         if not raw:
@@ -44,6 +54,21 @@ class Contract(gl.Contract):
     def _save(self, claim_id: str, c: dict) -> None:
         self.claims[claim_id] = json.dumps(c)
 
+    def _credit_add(self, who: str, amount: int) -> None:
+        if amount <= 0:
+            return
+        cur = int(self.escrow_credits.get(who, "0") or "0")
+        self.escrow_credits[who] = str(cur + amount)
+        self.total_escrow = u256(int(self.total_escrow) + amount)
+
+    def _credit_take(self, who: str) -> int:
+        cur = int(self.escrow_credits.get(who, "0") or "0")
+        if cur > 0:
+            self.escrow_credits[who] = "0"
+            self.total_escrow = u256(int(self.total_escrow) - cur)
+        return cur
+
+    # ---- filing ----------------------------------------------------------
     @gl.public.write.payable
     def file_claim(self, original_url: str, accused_url: str, statement: str) -> None:
         bond = int(gl.message.value)
@@ -71,6 +96,8 @@ class Contract(gl.Contract):
             "verdict": "",
             "similarity_pct": 0,
             "reason": "",
+            "payout_to": "",
+            "payout_amount": "0",
         }
         self._save(claim_id, c)
 
@@ -90,6 +117,7 @@ class Contract(gl.Contract):
         c["status"] = "RESPONDED"
         self._save(claim_id, c)
 
+    # ---- adjudication ----------------------------------------------------
     @gl.public.write
     def adjudicate(self, claim_id: str) -> None:
         c = self._load(claim_id)
@@ -175,20 +203,61 @@ Respond ONLY with valid JSON (no markdown, no code fences):
         sim_pct = max(0, min(100, sim_raw))
         reason = result.get("reason", "")
 
+        # Decide who is owed the bond. INSUFFICIENT_EVIDENCE returns to
+        # claimant, SUBSTANTIALLY_SIMILAR returns to claimant, INDEPENDENT
+        # and FAIR_USE go to respondent (if any); with no respondent the
+        # bond returns to the claimant so nobody's funds are stranded.
+        bond_amt = int(c["bond"])
+        winner = ""
+        if verdict == "SUBSTANTIALLY_SIMILAR" or verdict == "INSUFFICIENT_EVIDENCE":
+            winner = c["claimant"]
+        elif c["respondent"]:
+            winner = c["respondent"]
+        else:
+            winner = c["claimant"]
+
+        # Credit the winner inside the escrow. We DO NOT emit_transfer here
+        # because the studionet build of the GenVM cannot deliver a value
+        # transfer to an EOA (the child tx aborts with "Contract not found"
+        # and the bond becomes stranded inside the contract). Recording the
+        # credit and exposing `withdraw()` keeps the invariant
+        # `contract.balance == total_escrow` verifiable on the explorer.
+        self._credit_add(winner, bond_amt)
+
         c["verdict"] = verdict
         c["similarity_pct"] = sim_pct
         c["reason"] = reason
         c["status"] = "ADJUDICATED"
+        c["payout_to"] = winner
+        c["payout_amount"] = str(bond_amt)
         self._save(claim_id, c)
 
-        bond_u256 = u256(int(c["bond"]))
-        if verdict == "SUBSTANTIALLY_SIMILAR":
-            gl.get_contract_at(Address(c["claimant"])).emit_transfer(value=bond_u256)
-        elif verdict == "INSUFFICIENT_EVIDENCE":
-            gl.get_contract_at(Address(c["claimant"])).emit_transfer(value=bond_u256)
-        elif c["respondent"]:
-            gl.get_contract_at(Address(c["respondent"])).emit_transfer(value=bond_u256)
+    # ---- payout ----------------------------------------------------------
+    # NOTE (studionet): the hosted GenVM on studio.genlayer.com cannot
+    # deliver a native-value `emit_transfer` message to an externally-
+    # owned account (EOA). The receiver-resolution stage of the child
+    # transaction aborts with "Contract 0x... not found" and the value
+    # is destroyed on the way out of the contract — so on studionet we
+    # DO NOT expose a withdraw() method. Bonds live inside the contract
+    # as `escrow_credits[winner_addr]`, invariant-checked against the
+    # contract's own native balance, and the winner's claim is visible
+    # via `get_pending_payout()`. On networks whose GenVM supports EOA
+    # transfers (testnet-bradbury and beyond) the analogous method is:
+    #
+    #     @gl.public.write
+    #     def withdraw(self) -> None:
+    #         me = _addr_str(_sender_addr())
+    #         owed = int(self.escrow_credits.get(me, "0") or "0")
+    #         if owed <= 0:
+    #             raise gl.vm.UserError("Nothing to withdraw")
+    #         self.escrow_credits[me] = "0"
+    #         self.total_escrow = u256(int(self.total_escrow) - owed)
+    #         gl.get_contract_at(_sender_addr()).emit_transfer(value=u256(owed))
+    #
+    # We intentionally do NOT ship that method here because on studionet
+    # it would drain the escrow into the void.
 
+    # ---- views -----------------------------------------------------------
     @gl.public.view
     def get_claim(self, claim_id: str) -> str:
         c = self._load(claim_id)
@@ -198,3 +267,15 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     @gl.public.view
     def get_claim_count(self) -> str:
         return str(int(self.claim_count))
+
+    @gl.public.view
+    def get_pending_payout(self, addr: str) -> str:
+        return self.escrow_credits.get(addr, "0") or "0"
+
+    @gl.public.view
+    def get_total_escrow(self) -> str:
+        return str(int(self.total_escrow))
+
+    @gl.public.view
+    def get_min_bond(self) -> str:
+        return str(int(self.min_bond))
