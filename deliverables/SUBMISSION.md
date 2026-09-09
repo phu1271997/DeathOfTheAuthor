@@ -27,7 +27,7 @@ Death of the Author is a decentralized copyright adjudication system built on Ge
 ## Contract Address
 
 ```
-0x4e7D54930C9F510c3B690Dc531e2c6Ae1Ab60dD3
+0x249e80392A725fBdE23b09189D24339a79Bbdca3
 ```
 
 Network: GenLayer Studionet (Chain ID 61999). Address is hardcoded as `DEFAULT_CONTRACT_ADDRESS` in [frontend/src/config.ts](../frontend/src/config.ts) and shipped in the production bundle, so the repo alone identifies the live contract; `VITE_CONTRACT_ADDRESS` only exists as an override for redeployment.
@@ -38,7 +38,7 @@ Network: GenLayer Studionet (Chain ID 61999). Address is hardcoded as `DEFAULT_C
 
 - **Frontend**: https://deathoftheauthor.vercel.app
 - **GitHub**: https://github.com/phu1271997/DeathOfTheAuthor
-- **Explorer (contract)**: https://genlayer-explorer.vercel.app/address/0x4e7D54930C9F510c3B690Dc531e2c6Ae1Ab60dD3
+- **Explorer (contract)**: https://genlayer-explorer.vercel.app/address/0x249e80392A725fBdE23b09189D24339a79Bbdca3
 
 ---
 
@@ -98,7 +98,7 @@ def withdraw(self) -> None:
     _Payee(_sender_addr()).emit_transfer(value=u256(owed))
 ```
 
-Routing the transfer through an `@gl.evm.contract_interface` recipient dispatches it as an external message (via the chain-layer ghost contract) rather than an internal IC-to-IC method call. That is the path the GenVM uses to reach any address, including a plain EOA. It has been verified against studionet with the exact tx below.
+Routing the transfer through an `@gl.evm.contract_interface` recipient dispatches it as an external message (via the chain-layer ghost contract) rather than an internal IC-to-IC method call. That is the path the GenVM uses to reach any address, including a plain EOA. It is verified against studionet by the reproducible run below.
 
 The invariant `contract.balance == total_escrow == Σ escrow_credits[addr]` is enforced by construction:
 
@@ -110,93 +110,69 @@ The invariant is checked at every state transition in the E2E run below.
 
 ---
 
-## Recorded End-to-End Test on the Live Contract
+## Recorded, Reproducible End-to-End Wallet Flow
 
-All transactions below hit `0x4e7D54930C9F510c3B690Dc531e2c6Ae1Ab60dD3` on studionet, from two independent wallets:
+The frontend wallet flow is **executable, not prose**. [`frontend/e2e.mjs`](../frontend/e2e.mjs) signs the same contract calls the React UI issues (`file_claim → respond → adjudicate → withdraw`) with two funded wallets, and **asserts the finalized transaction result and both error states**. Every run writes the real tx hashes, consensus result, GenVM execution result and rollback payloads to [`deliverables/e2e-run.json`](./e2e-run.json).
 
-- **W1 (claimant)**: `0x8b563A8c9eeF530300e92E26457D1AB001daEcC7`
+Reproduce it:
+
+```bash
+cd frontend
+source ~/.genlayer/env.sh      # GENLAYER_PRIVATE_KEY (W1) + _2 (W2)
+node e2e.mjs                   # exits non-zero if any assertion fails
+```
+
+Wallets in the committed run:
+
+- **W1 (claimant / adjudicator)**: `0x8b563A8c9eeF530300e92E26457D1AB001daEcC7`
 - **W2 (respondent)**: `0xFdc45874126A0580d9A9d034F2AA20d9bdad8235`
 
-The explorer captures every hash and every child transaction:
+All six transactions hit `0x249e80392A725fBdE23b09189D24339a79Bbdca3` on studionet. Verdict: **INDEPENDENT (12%)** → bond credited to the respondent W2, who then withdraws it.
 
-### Phase 1 — File three funded claims from W1 (100 GEN each)
+| Step | Call | Expected | GenVM result | Tx |
+|------|------|----------|--------------|----|
+| 1 File claim | `file_claim` (100 GEN bond) | success | `SUCCESS` / return | [`0xbc8c88ef…40124b07`](https://genlayer-explorer.vercel.app/tx/0xbc8c88ef6b28d570f9d687cd11c2bcbf072f6f85dffe65b4c875e8f040124b07) |
+| 2 **Claimant self-response** | `respond` | **rollback** | `ERROR` / `"Claimant cannot respond to own claim"` | [`0x24db7a7a…311df473`](https://genlayer-explorer.vercel.app/tx/0x24db7a7afe49ff2b4c417d85765bf54ed8ef9083ca384ba8025e648e311df473) |
+| 3 Respond (W2) | `respond` | success | `SUCCESS` / return | [`0x09ab7c77…06da18ac`](https://genlayer-explorer.vercel.app/tx/0x09ab7c77088021017a5857c6ddecf2b168bbf67ff6e11a531426f19d06da18ac) |
+| 4 Adjudicate (AI jury) | `adjudicate` | success | `SUCCESS` / return | [`0xd2bad300…c9e3eaca`](https://genlayer-explorer.vercel.app/tx/0xd2bad3004d842be55bcb56ca2cdf61afad949d747214afa982efafcac9e3eaca) |
+| 5 Withdraw (winner W2) | `withdraw` | success | `SUCCESS` / return | [`0xa86cd94c…d95b4951`](https://genlayer-explorer.vercel.app/tx/0xa86cd94cdc8642c5a225c87b71e070e4f5c7b4b65b5c7e440953000dd95b4951) |
+| 6 **Second withdraw** | `withdraw` | **rollback** | `ERROR` / `"Nothing to withdraw"` | [`0x7dfda126…3150d8c6`](https://genlayer-explorer.vercel.app/tx/0x7dfda126982b2c5cbef15d48e9662755d28477f0ba9821421c0fe6bd3150d8c6) |
 
-| # | Content pair | Tx |
-|---|-------------|----|
-| 0 | Python vs Chocolate cake (unrelated) | [`0x328699cb…900d4a63`](https://genlayer-explorer.vercel.app/tx/0x328699cb017b414865887ad6550a352a2c2226cdb9d7fab425a4ad2c900d4a63) |
-| 1 | Copyright vs US Copyright law (adjacent) | [`0x6d1a5121…36730ce7`](https://genlayer-explorer.vercel.app/tx/0x6d1a51215af21912c891ebfde92f31df0c5c9230cafe14448cc53ba536730ce7) |
-| 2 | AI vs ML (has respondent) | [`0xc47cb917…dfee3ba60`](https://genlayer-explorer.vercel.app/tx/0xc47cb9176ce6b8db3f7d6d6d4d0f88f9ea2fb3b108c07d877250788dfee3ba60) |
+The script also asserts the escrow invariant at each transition: `total_escrow` rises by the bond on file, is unchanged by adjudication (the bond moves into the winner's credit inside the pool), and the contract's native balance drops by exactly the bond on withdraw — `contract.balance == total_escrow` throughout. Step 5 is the proof that native GEN actually leaves the contract to an EOA via the external-message path; steps 2 and 6 are the transaction error states.
 
-Invariant check after phase 1: `contract.balance = 300 GEN, total_escrow = 300 GEN — match: true`.
+### Live state left on-chain for the reviewer
 
-### Phase 2 — W2 responds to claim #2
-
-- [`0xf365f2aa…95196dde8`](https://genlayer-explorer.vercel.app/tx/0xf365f2aa22329ca3cae904a0150d8caada83cbba31effd7e7413df295196dde8): W2 files defense statement. Contract enforces `msg.sender != claimant`.
-
-### Phase 3 — Adjudicate all three (AI consensus)
-
-Each triggers `gl.nondet.web.render` × 2 → `gl.nondet.exec_prompt` → `gl.vm.run_nondet(leader_fn, validator_fn)` with the validator comparing verdict and enforcing `|sim_leader − sim_mine| ≤ 20`.
-
-| Claim | Tx | Post-invariant |
-|-------|----|-----|
-| #0 | [`0x61257eee…ef3581a9`](https://genlayer-explorer.vercel.app/tx/0x61257eeebed80543e31aaa5af481de82bea861ba1a93cb67ddd76211ef3581a9) | 300 = 300 ✓ |
-| #1 | [`0x7899ac25…0ab8a711`](https://genlayer-explorer.vercel.app/tx/0x7899ac25bfc3f2176808e78a71546b39f1e2ccb0743edd08161f77f40ab8a711) | 300 = 300 ✓ |
-| #2 | [`0xeed1a40f…84d02d37`](https://genlayer-explorer.vercel.app/tx/0xeed1a40f3a152f62be1759e2d5954133e6360d8070fb3bd29e664c9e84d02d37) | 300 = 300 ✓ |
-
-### Phase 4 — Withdrawals (real native GEN leaves the contract)
-
-W2's wallet balance was snapshotted before and after each withdrawal:
-
-| Wallet | Tx | On-chain effect |
-|--------|----|-----------------|
-| W2 | [`0x6f2ab7fe…f03a1122c`](https://genlayer-explorer.vercel.app/tx/0x6f2ab7fe83d2f39d6c40f2bdd881219dad48e3fb0a1e6b1930bce6ef03a1122c) | W2 balance +100 GEN, contract balance 300 → 200. Invariant: 200 = 200 ✓ |
-| W1 | [`0xe9051501…9c5c65ef85`](https://genlayer-explorer.vercel.app/tx/0xe90515015807d13e842b00b470341b7641e2ef82932dd443f857a69c5c65ef85) | W1 balance +200 GEN, contract balance 200 → 0. Invariant: 0 = 0 ✓ |
-
-### Phase 5 — Error-state proof
-
-Second W2 withdraw with zero balance:
-
-- [`0x4345f4de…91ead76f`](https://genlayer-explorer.vercel.app/tx/0x4345f4de5fab295951422b790bb537dfcc34a1f9275e37bca3d0de5e91ead76f)
-- Parent tx status FINALIZED; `result.status = "rollback"`; payload = `"Nothing to withdraw"`.
-- Contract state and balances unchanged — the UserError propagates back to the frontend where it renders in the error banner.
-
-### Phase 6 — Fresh state left on-chain for the reviewer
-
-| # | Tx | Status |
-|---|----|--------|
-| 3 | [`0x15e57c78…23e00e745`](https://genlayer-explorer.vercel.app/tx/0x15e57c78e943b660ad3591226444b5768b444fdc660823147105a8723e00e745) | OPEN — DNA vs RNA; reviewer can click **Request Adjudication** live |
-| 4 | file [`0x16465874…1fb91d24`](https://genlayer-explorer.vercel.app/tx/0x16465874507d2df23afc1b0801d372ec841ee51f8fd426d70ff350dd1fb91d24) · respond [`0x9f7d0f7b…1330ff36`](https://genlayer-explorer.vercel.app/tx/0x9f7d0f7bd61f676d96e416b28f6d0c25b3229ce4da2e3f33ff875b071330ff36) · adjudicate [`0x37164137…eef6b17c`](https://genlayer-explorer.vercel.app/tx/0x37164137e90f9726d67ff811a896149d3b87b8e3905b1cf385f23158eef6b17c) | ADJUDICATED — Bitcoin vs Ethereum; **W2 has 100 GEN pending withdraw** |
-
-So a reviewer opening the app, connecting W2, will see a live 100 GEN escrow credit and can click **Withdraw** to receive it in the wallet.
+| # | Content | Status | For the reviewer |
+|---|---------|--------|------------------|
+| 0 | AI vs ML | ADJUDICATED (INDEPENDENT) | the e2e cycle above — bond already withdrawn |
+| 1 | DNA vs RNA | **OPEN** | connect a funded studionet wallet and click **Request Adjudication** to run the AI jury live |
+| 2 | Bitcoin vs Ethereum | ADJUDICATED (INDEPENDENT) | a real 100 GEN escrow credit sits unpaid — `get_pending_payout` returns it non-zero; the escrow card shows it in **Total in escrow** |
 
 ---
 
-## Frontend Wallet Flow — What the Reviewer Sees
+## Frontend Wallet Flow — UI mapping
 
-Live app: **https://deathoftheauthor.vercel.app**
+Live app: **https://deathoftheauthor.vercel.app**. Each UI action maps to the calls the e2e run above verifies ([frontend/src/App.tsx](../frontend/src/App.tsx)):
 
-1. **Connect Wallet** — MetaMask popup, network auto-switched/added to studionet (Chain ID 61999). If the user cancels, an error banner reads `User rejected the request.`
-2. **Escrow status card** at the top of the Court section shows:
-   - `Total in escrow` (reads `get_total_escrow`)
-   - `Owed to your wallet` (reads `get_pending_payout(connectedAddr)`) plus a **Withdraw** button that's disabled when the balance is zero
-   - Clickable link to the contract on the studionet explorer
-3. **File a Claim** — form validates required URLs + minimum bond, then signs `file_claim`. While the tx pends the banner shows `Submitting claim with bond — waiting for consensus…` and reveals the tx hash + explorer link as soon as it lands.
-4. **Claims panel** lists every on-chain claim with status badge, URL previews, bond amount, verdict + similarity meter, and AI reason. Clicking a card opens the detail panel with Respond / Request Adjudication actions.
-5. **AI jury deliberating** — for `adjudicate` the banner shows `AI jury deliberating (30–120 s) — waiting for consensus…` and switches to `Verdict delivered!` on success, then the verdict + reason paragraph render inline. Failures show the raw revert message in the error banner (e.g. `Claim already adjudicated`).
-6. **Withdraw** — clicking the Withdraw button signs `withdraw`, banner shows `Withdrawing your escrow credit — waiting for consensus…`, on success the wallet balance updates and the `Owed to your wallet` counter drops to 0. A second click with no balance renders `Nothing to withdraw` in the error banner.
-7. **Explorer link** on the details panel opens the contract on the studionet explorer so the reviewer can cross-check every transaction and the escrow invariant.
+1. **Connect Wallet** — `wallet_switchEthereumChain` / `wallet_addEthereumChain` to studionet (Chain ID 61999), then `eth_requestAccounts`. Cancelling surfaces the wallet error in the banner.
+2. **Escrow status card** — reads `get_total_escrow` and `get_pending_payout(connectedAddr)`; the **Withdraw** button is disabled at zero credit and calls `withdraw` otherwise.
+3. **File a Claim** — validates the form, signs `file_claim` with the bond, shows `Submitting claim with bond — waiting for consensus…` and the tx hash + explorer link (verified by step 1).
+4. **Claims panel** — lists on-chain claims with status, verdict, similarity meter and AI reason; the detail panel exposes Respond / Request Adjudication.
+5. **Adjudicate** — signs `adjudicate`, shows `AI jury deliberating (30–120 s)…`, then renders verdict + reason (step 4). A revert renders in the error banner (step 2 is the same rollback path).
+6. **Withdraw** — signs `withdraw`, drops `Owed to your wallet` to 0 on success (step 5); a second click renders `Nothing to withdraw` in the error banner (step 6).
 
-The reviewer can independently reproduce every step above against the seeded on-chain state described in Phase 6 (claim #3 is OPEN and adjudicable; W2 has a real 100 GEN credit ready to withdraw).
+The `.json` run is the machine-checkable record of items 3–6; the two `rollback` rows are the transaction error states the banner renders.
 
 ---
 
 ## Test Suite
 
 ```bash
-pytest tests/ -m fast -v       # 10 deterministic tests
-pytest tests/ -m slow -v       # 8 mocked-LLM/web tests
-pytest tests/ -v               # 18 total: file_claim validation, respond flow
+pytest tests/ -m fast -v       # 13 deterministic tests
+pytest tests/ -m slow -v       # 11 mocked-LLM/web tests
+pytest tests/ -v               # 24 total: file_claim validation, respond flow
                                # (including claimant-blocked), all 4 verdicts,
-                               # double-adjudicate prevention, bond custody,
-                               # full lifecycle
+                               # double-adjudicate prevention, escrow accounting,
+                               # payout crediting (claimant + respondent),
+                               # withdraw + withdraw-nothing revert, full lifecycle
 ```

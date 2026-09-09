@@ -21,11 +21,14 @@ Artists need a faster, cheaper, transparent mechanism for resolving "did they co
                - Apply copyright similarity analysis
                - Reach consensus on verdict
                                     |
-4. VERDICT  One of four outcomes:
-            SUBSTANTIALLY_SIMILAR -> bond returned to claimant
-            INDEPENDENT          -> bond forfeited
-            FAIR_USE             -> bond forfeited
-            INSUFFICIENT_EVIDENCE -> bond forfeited
+4. VERDICT  One of four outcomes, each credits the bond to a winner in escrow:
+            SUBSTANTIALLY_SIMILAR -> credited to claimant
+            INDEPENDENT           -> credited to respondent (claimant if none)
+            FAIR_USE              -> credited to respondent (claimant if none)
+            INSUFFICIENT_EVIDENCE -> credited to claimant
+                                    |
+5. WITHDRAW The winner signs withdraw() to pull the credited bond out of
+            escrow (pull-payment). Invariant: contract balance == total_escrow.
 ```
 
 ## Architecture
@@ -49,7 +52,7 @@ Artists need a faster, cheaper, transparent mechanism for resolving "did they co
 1. **Reading real web content** from two arbitrary URLs at transaction time
 2. **Reasoning about similarity** in creative expression, not just string matching
 3. **Reaching consensus** among multiple independent AI validators on a verdict
-4. **Deterministic finality** — the verdict is recorded on-chain and triggers bond return
+4. **Deterministic finality** — the verdict is recorded on-chain and credits the bond in escrow for the winner to withdraw
 
 Solidity cannot fetch web pages. Oracles cannot reason about aesthetics. Only GenLayer's Intelligent Contracts — with `gl.nondet.web.render` and `gl.nondet.exec_prompt` inside validator consensus — can perform this adjudication on-chain.
 
@@ -122,18 +125,43 @@ pytest tests/ -v
 ## Contract Address
 
 ```
-Studionet: 0x4e7D54930C9F510c3B690Dc531e2c6Ae1Ab60dD3
+Studionet: 0x249e80392A725fBdE23b09189D24339a79Bbdca3
 ```
 
-Explorer: https://genlayer-explorer.vercel.app/address/0x4e7D54930C9F510c3B690Dc531e2c6Ae1Ab60dD3
+Explorer: https://genlayer-explorer.vercel.app/address/0x249e80392A725fBdE23b09189D24339a79Bbdca3
 
 Live app: https://deathoftheauthor.vercel.app
 
-## Video Demo
+## Deploy the Contract (CLI / script)
 
-See `deliverables/SUBMISSION.md` for the recorded end-to-end walkthrough
-(connect wallet, file funded claim, respond from second wallet, adjudicate,
-consensus verdict on-chain).
+The contract is deployed from `contracts/contract.py` with `scripts/deploy/deploy.mjs`:
+
+```bash
+cd frontend && npm install   # provides genlayer-js
+source ~/.genlayer/env.sh     # exports GENLAYER_PRIVATE_KEY
+node ../scripts/deploy/deploy.mjs
+```
+
+It prints the new contract address; paste it into
+`frontend/src/config.ts` (`DEFAULT_CONTRACT_ADDRESS`) and rebuild.
+
+## Recorded End-to-End Wallet Flow
+
+`frontend/e2e.mjs` drives the exact contract calls the UI issues, signs each
+with a funded wallet, and asserts the transaction result **and** the error
+states (claimant self-response and double-withdraw both roll back with their
+`UserError` payloads). It writes the run — real tx hashes, consensus result,
+GenVM execution result, rollback payloads — to `deliverables/e2e-run.json`.
+
+```bash
+cd frontend
+source ~/.genlayer/env.sh      # GENLAYER_PRIVATE_KEY (W1) + _2 (W2)
+node e2e.mjs                   # exits non-zero if any assertion fails
+```
+
+The latest passing run is committed at
+[`deliverables/e2e-run.json`](deliverables/e2e-run.json); every step links to
+its transaction on the studionet explorer.
 
 ## License
 

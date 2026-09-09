@@ -12,7 +12,7 @@ import { studionet } from 'genlayer-js/chains';
 // the source, but the constant ships in the bundle so the repo (and
 // anyone reading the code) always sees the live contract address.
 export const DEFAULT_CONTRACT_ADDRESS =
-  '0x4e7D54930C9F510c3B690Dc531e2c6Ae1Ab60dD3';
+  '0x249e80392A725fBdE23b09189D24339a79Bbdca3';
 
 export const CONTRACT_ADDRESS =
   (import.meta as any).env?.VITE_CONTRACT_ADDRESS || DEFAULT_CONTRACT_ADDRESS;
