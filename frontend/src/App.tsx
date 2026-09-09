@@ -8,6 +8,7 @@ import {
   weiToGen,
   txExplorerUrl,
   addressExplorerUrl,
+  extractExecution,
   EXPLORER_URL,
 } from './config';
 
@@ -96,7 +97,7 @@ const FAQ_ITEMS = [
   {
     question: 'What happens to my bond?',
     answer:
-      'The bond stays in the contract as escrow until adjudication. If the verdict is SUBSTANTIALLY_SIMILAR the bond is credited back to the claimant; for INDEPENDENT or FAIR_USE it is credited to the respondent (or refunded to the claimant if no respondent filed a defense); for INSUFFICIENT_EVIDENCE it is refunded. The contract exposes get_pending_payout(addr), and the invariant contract_balance == total_escrow is checked on every write, so bonds cannot be silently lost. On studionet the GenVM cannot deliver native transfers to EOAs (a receiver-resolution limitation of the hosted build), so the on-chain withdraw step is enabled on the networks whose GenVM supports it.',
+      'The bond stays in the contract as escrow until adjudication. If the verdict is SUBSTANTIALLY_SIMILAR or INSUFFICIENT_EVIDENCE the bond is credited back to the claimant; for INDEPENDENT or FAIR_USE it is credited to the respondent (or refunded to the claimant if no respondent filed a defense). The winner then calls withdraw() to pull the credited bond out of escrow — native GEN is delivered to the wallet on studionet through GenLayer’s external-message path. The contract exposes get_pending_payout(addr), and the invariant contract_balance == total_escrow holds on every write, so bonds cannot be silently lost.',
   },
   {
     question: 'Is the verdict final?',
@@ -274,26 +275,30 @@ export default function App() {
       const hashStr = typeof hash === 'string' ? hash : String(hash);
       setTxHash(hashStr);
       setTxMessage(`${pendingMsg} — waiting for consensus…`);
-      try {
-        const receipt: any = await client.waitForTransactionReceipt({
-          hash: hashStr,
-          status: 'FINALIZED',
-          fullTransaction: false,
-        });
-        const execName = receipt?.txExecutionResultName || receipt?.txExecutionResult;
-        if (execName && execName !== 'FINISHED_WITH_RETURN') {
-          throw new Error(
-            `${label} failed: ${execName}${receipt?.consensus_data ? '' : ''}`
-          );
-        }
-      } catch (waitErr: any) {
-        console.warn('waitForTransactionReceipt error', waitErr);
+      // Wait for finality, then surface on-chain execution failures. A tx can
+      // FINALIZE while its GenVM execution rolled back (a UserError) — that is
+      // NOT success. If waitForTransactionReceipt itself errors (e.g. the tx
+      // never finalizes) we let it throw to the outer catch rather than
+      // swallowing it and reporting success.
+      const receipt: any = await client.waitForTransactionReceipt({
+        hash: hashStr,
+        status: 'FINALIZED',
+      });
+      const exec = extractExecution(receipt);
+      if (exec.execution_result === 'ERROR' || exec.status === 'rollback') {
+        throw new Error(exec.payload || `${label} was rejected on-chain`);
+      }
+      if (exec.execution_result && exec.execution_result !== 'SUCCESS') {
+        throw new Error(
+          `${label} did not finalize successfully (${exec.execution_result})`
+        );
       }
       setTxMessage(okMsg);
       await fetchClaims();
       return true;
     } catch (err: any) {
       console.error(`${label} failed`, err);
+      setTxMessage('');
       setError(err?.shortMessage || err?.message || `${label} failed`);
       return false;
     } finally {

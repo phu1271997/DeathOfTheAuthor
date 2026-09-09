@@ -79,6 +79,31 @@ export function getReadClient() {
   } as any);
 }
 
+// Pulls the GenVM execution outcome out of a finalized transaction receipt.
+// A tx can reach FINALIZED while its execution rolled back (a UserError), so
+// callers must inspect this — not just the finality status — before treating a
+// write as successful.
+//   execution_result: "SUCCESS" | "ERROR"
+//   status:           "return"  | "rollback"
+//   payload:          UserError message when it rolled back
+export function extractExecution(receipt: any): {
+  consensus?: string;
+  execution_result?: string;
+  status?: string;
+  payload?: string;
+} {
+  const cd = receipt?.consensus_data || {};
+  let lr = cd.leader_receipt;
+  if (Array.isArray(lr)) lr = lr[0];
+  const res = lr?.result || {};
+  return {
+    consensus: receipt?.result_name,
+    execution_result: lr?.execution_result,
+    status: res?.status,
+    payload: typeof res?.payload === 'string' ? res.payload : undefined,
+  };
+}
+
 export function txExplorerUrl(hash: string): string {
   return `${EXPLORER_URL.replace(/\/$/, '')}/tx/${hash}`;
 }

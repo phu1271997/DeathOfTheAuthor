@@ -1,0 +1,10 @@
+# Pinned test environment for the gltest suite (see README "Run Tests").
+# These are the exact versions the committed test runs were executed against;
+# gltest / GenVM behaviour is version-sensitive, so pin rather than float.
+#
+#   python3 -m pip install -r tests/requirements.txt
+#
+# Verified on Python 3.13.
+genlayer-test==0.29.2
+genlayer-py==0.16.3
+pytest==9.0.3

@@ -117,10 +117,16 @@ Or connect the repo to Vercel with these settings:
 ## Run Tests
 
 ```bash
-# Requires GenLayer simulator running
-pip install gltest pytest
+# Requires GenLayer simulator/localnet running (or --network studionet)
+python3 -m pip install -r tests/requirements.txt   # pinned versions
 pytest tests/ -v
 ```
+
+Test environment is pinned in [`tests/requirements.txt`](tests/requirements.txt)
+(`genlayer-test==0.29.2`, `genlayer-py==0.16.3`, `pytest==9.0.3`, Python 3.13);
+gltest/GenVM behaviour is version-sensitive. The frontend `e2e.mjs`/deploy
+scripts pin `genlayer-js@1.2.0` in [`frontend/package.json`](frontend/package.json)
+(locked by `package-lock.json`).
 
 ## Contract Address
 
