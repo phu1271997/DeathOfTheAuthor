@@ -1,0 +1,128 @@
+{
+  "generated_at": "2026-09-09T05:17:14.834Z",
+  "network": "studionet",
+  "chain_id": 61999,
+  "contract": "0x249e80392A725fBdE23b09189D24339a79Bbdca3",
+  "contract_explorer": "https://genlayer-explorer.vercel.app/address/0x249e80392A725fBdE23b09189D24339a79Bbdca3",
+  "wallets": {
+    "claimant_W1": "0x8b563A8c9eeF530300e92E26457D1AB001daEcC7",
+    "respondent_W2": "0xFdc45874126A0580d9A9d034F2AA20d9bdad8235"
+  },
+  "claim_id": "0",
+  "verdict": "INDEPENDENT",
+  "similarity_pct": 12,
+  "winner": "0xFdc45874126A0580d9A9d034F2AA20d9bdad8235",
+  "assertions_failed": 0,
+  "steps": [
+    {
+      "label": "File claim",
+      "fn": "file_claim",
+      "args": [
+        "https://en.wikipedia.org/wiki/Artificial_intelligence",
+        "https://en.wikipedia.org/wiki/Machine_learning",
+        "The accused work reuses the original's explanations and structure of core AI concepts."
+      ],
+      "value": "100000000000000000000",
+      "expect": "success",
+      "expectPayload": "",
+      "hash": "0xbc8c88ef6b28d570f9d687cd11c2bcbf072f6f85dffe65b4c875e8f040124b07",
+      "explorer": "https://genlayer-explorer.vercel.app/tx/0xbc8c88ef6b28d570f9d687cd11c2bcbf072f6f85dffe65b4c875e8f040124b07",
+      "status_name": "FINALIZED",
+      "consensus": "MAJORITY_AGREE",
+      "execution_result": "SUCCESS",
+      "result_status": "return",
+      "payload": {
+        "readable": "null"
+      }
+    },
+    {
+      "label": "Claimant self-response (must fail)",
+      "fn": "respond",
+      "args": [
+        "0",
+        "I am the claimant trying to respond to my own claim"
+      ],
+      "value": "0",
+      "expect": "rollback",
+      "expectPayload": "Claimant cannot respond",
+      "hash": "0x24db7a7afe49ff2b4c417d85765bf54ed8ef9083ca384ba8025e648e311df473",
+      "explorer": "https://genlayer-explorer.vercel.app/tx/0x24db7a7afe49ff2b4c417d85765bf54ed8ef9083ca384ba8025e648e311df473",
+      "status_name": "FINALIZED",
+      "consensus": "MAJORITY_AGREE",
+      "execution_result": "ERROR",
+      "result_status": "rollback",
+      "payload": "Claimant cannot respond to own claim"
+    },
+    {
+      "label": "Respond",
+      "fn": "respond",
+      "args": [
+        "0",
+        "Machine learning is a distinct subfield. Any overlap is shared public-domain foundation, not copied expression."
+      ],
+      "value": "0",
+      "expect": "success",
+      "expectPayload": "",
+      "hash": "0x09ab7c77088021017a5857c6ddecf2b168bbf67ff6e11a531426f19d06da18ac",
+      "explorer": "https://genlayer-explorer.vercel.app/tx/0x09ab7c77088021017a5857c6ddecf2b168bbf67ff6e11a531426f19d06da18ac",
+      "status_name": "FINALIZED",
+      "consensus": "MAJORITY_AGREE",
+      "execution_result": "SUCCESS",
+      "result_status": "return",
+      "payload": {
+        "readable": "null"
+      }
+    },
+    {
+      "label": "Adjudicate (AI jury)",
+      "fn": "adjudicate",
+      "args": [
+        "0"
+      ],
+      "value": "0",
+      "expect": "success",
+      "expectPayload": "",
+      "hash": "0xd2bad3004d842be55bcb56ca2cdf61afad949d747214afa982efafcac9e3eaca",
+      "explorer": "https://genlayer-explorer.vercel.app/tx/0xd2bad3004d842be55bcb56ca2cdf61afad949d747214afa982efafcac9e3eaca",
+      "status_name": "FINALIZED",
+      "consensus": "MAJORITY_AGREE",
+      "execution_result": "SUCCESS",
+      "result_status": "return",
+      "payload": {
+        "readable": "null"
+      }
+    },
+    {
+      "label": "Withdraw (winner)",
+      "fn": "withdraw",
+      "args": [],
+      "value": "0",
+      "expect": "success",
+      "expectPayload": "",
+      "hash": "0xa86cd94cdc8642c5a225c87b71e070e4f5c7b4b65b5c7e440953000dd95b4951",
+      "explorer": "https://genlayer-explorer.vercel.app/tx/0xa86cd94cdc8642c5a225c87b71e070e4f5c7b4b65b5c7e440953000dd95b4951",
+      "status_name": "FINALIZED",
+      "consensus": "MAJORITY_AGREE",
+      "execution_result": "SUCCESS",
+      "result_status": "return",
+      "payload": {
+        "readable": "null"
+      }
+    },
+    {
+      "label": "Second withdraw (must fail)",
+      "fn": "withdraw",
+      "args": [],
+      "value": "0",
+      "expect": "rollback",
+      "expectPayload": "Nothing to withdraw",
+      "hash": "0x7dfda126982b2c5cbef15d48e9662755d28477f0ba9821421c0fe6bd3150d8c6",
+      "explorer": "https://genlayer-explorer.vercel.app/tx/0x7dfda126982b2c5cbef15d48e9662755d28477f0ba9821421c0fe6bd3150d8c6",
+      "status_name": "FINALIZED",
+      "consensus": "MAJORITY_AGREE",
+      "execution_result": "ERROR",
+      "result_status": "rollback",
+      "payload": "Nothing to withdraw"
+    }
+  ]
+}
