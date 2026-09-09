@@ -255,6 +255,81 @@ class TestAdjudicateSlow:
         assert claim["verdict"] == "INDEPENDENT"
 
 
+class TestEscrowFast:
+    @pytest.mark.fast
+    def test_total_escrow_tracks_bonds(self, ct):
+        creator = ct.create_account()
+        ct.contract.connect(creator).file_claim(
+            args=["https://example.com/original", "https://example.com/accused", "Copied"]
+        ).transact(value=2000)
+        assert ct.contract.get_total_escrow(args=[]).call() == "2000"
+        ct.contract.connect(creator).file_claim(
+            args=["https://example.com/original", "https://example.com/accused", "Copied again"]
+        ).transact(value=3000)
+        assert ct.contract.get_total_escrow(args=[]).call() == "5000"
+
+    @pytest.mark.fast
+    def test_pending_payout_zero_initially(self, ct):
+        someone = ct.create_account()
+        assert ct.contract.get_pending_payout(args=[someone.address]).call() == "0"
+
+    @pytest.mark.fast
+    def test_withdraw_nothing_reverts(self, ct):
+        # No credit for this account -> UserError before any transfer.
+        nobody = ct.create_account()
+        with pytest.raises(Exception):
+            ct.contract.connect(nobody).withdraw(args=[]).transact()
+
+
+class TestWithdrawSlow:
+    @pytest.mark.slow
+    def test_adjudication_credits_claimant(self, ct):
+        creator = ct.create_account()
+        file_claim(ct, creator, bond=2000)
+        install_mocks(ct, verdict="SUBSTANTIALLY_SIMILAR", similarity=90)
+        adjudicator = ct.create_account()
+        ct.contract.connect(adjudicator).adjudicate(args=["0"]).transact()
+        claim = json.loads(ct.contract.get_claim(args=["0"]).call())
+        # SUBSTANTIALLY_SIMILAR -> claimant is credited the bond in escrow.
+        assert claim["payout_to"] == creator.address
+        assert claim["payout_amount"] == "2000"
+        assert ct.contract.get_pending_payout(args=[creator.address]).call() == "2000"
+        # Bond stays in the pool until withdrawn; total_escrow unchanged by adjudicate.
+        assert ct.contract.get_total_escrow(args=[]).call() == "2000"
+
+    @pytest.mark.slow
+    def test_adjudication_credits_respondent(self, ct):
+        creator = ct.create_account()
+        file_claim(ct, creator, bond=2000)
+        respondent = ct.create_account()
+        ct.contract.connect(respondent).respond(
+            args=["0", "Independently created"]
+        ).transact()
+        install_mocks(ct, verdict="INDEPENDENT", similarity=10)
+        adjudicator = ct.create_account()
+        ct.contract.connect(adjudicator).adjudicate(args=["0"]).transact()
+        claim = json.loads(ct.contract.get_claim(args=["0"]).call())
+        # INDEPENDENT with a respondent -> respondent is credited.
+        assert claim["payout_to"] == respondent.address
+        assert ct.contract.get_pending_payout(args=[respondent.address]).call() == "2000"
+
+    @pytest.mark.slow
+    def test_withdraw_clears_credit(self, ct):
+        creator = ct.create_account()
+        file_claim(ct, creator, bond=2000)
+        install_mocks(ct, verdict="SUBSTANTIALLY_SIMILAR", similarity=88)
+        adjudicator = ct.create_account()
+        ct.contract.connect(adjudicator).adjudicate(args=["0"]).transact()
+        assert ct.contract.get_pending_payout(args=[creator.address]).call() == "2000"
+        ct.contract.connect(creator).withdraw(args=[]).transact()
+        # After withdraw the credit is zeroed and the escrow pool shrinks.
+        assert ct.contract.get_pending_payout(args=[creator.address]).call() == "0"
+        assert ct.contract.get_total_escrow(args=[]).call() == "0"
+        # Second withdraw with nothing left reverts.
+        with pytest.raises(Exception):
+            ct.contract.connect(creator).withdraw(args=[]).transact()
+
+
 class TestLifecycleSlow:
     @pytest.mark.slow
     def test_full_lifecycle_similar(self, ct):
